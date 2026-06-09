@@ -1,0 +1,974 @@
+# Portuguese (Brazil) translations - source language, msgstr left empty (fallback to msgid)
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: pt_BR\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Português"
+msgstr "Português"
+
+msgid "English"
+msgstr "Inglês"
+
+# --- Login ---
+msgid "SBOM Security Platform"
+msgstr "SBOM Security Platform"
+
+msgid "Usuário ou senha incorretos. Tente novamente."
+msgstr "Usuário ou senha incorretos. Tente novamente."
+
+msgid "Usuário"
+msgstr "Usuário"
+
+msgid "seu usuário"
+msgstr "seu usuário"
+
+msgid "Senha"
+msgstr "Senha"
+
+msgid "Acessar Plataforma"
+msgstr "Acessar Plataforma"
+
+msgid "ou"
+msgstr "ou"
+
+msgid "Entrar com conta Corporativa"
+msgstr "Entrar com conta Corporativa"
+
+# --- Force Password Change ---
+msgid "Matrix | Alterar Senha"
+msgstr "Matrix | Alterar Senha"
+
+msgid "Troca de Senha Obrigatória"
+msgstr "Troca de Senha Obrigatória"
+
+msgid "Por segurança, você precisa definir uma nova senha antes de continuar."
+msgstr "Por segurança, você precisa definir uma nova senha antes de continuar."
+
+msgid "Senha alterada com sucesso!"
+msgstr "Senha alterada com sucesso!"
+
+msgid "Continuar"
+msgstr "Continuar"
+
+msgid "Nova Senha"
+msgstr "Nova Senha"
+
+msgid "Confirmar Nova Senha"
+msgstr "Confirmar Nova Senha"
+
+msgid "mínimo 8 caracteres"
+msgstr "mínimo 8 caracteres"
+
+msgid "repita a senha"
+msgstr "repita a senha"
+
+msgid "Definir Nova Senha"
+msgstr "Definir Nova Senha"
+
+# --- Common ---
+msgid "Carregando..."
+msgstr "Carregando..."
+
+msgid "Cancelar"
+msgstr "Cancelar"
+
+msgid "Salvar"
+msgstr "Salvar"
+
+msgid "Salvando..."
+msgstr "Salvando..."
+
+msgid "Erro ao salvar."
+msgstr "Erro ao salvar."
+
+msgid "Ações"
+msgstr "Ações"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Versão"
+msgstr "Versão"
+
+msgid "Produto"
+msgstr "Produto"
+
+msgid "Componentes"
+msgstr "Componentes"
+
+msgid "Ativo"
+msgstr "Ativo"
+
+msgid "Ativos"
+msgstr "Ativos"
+
+msgid "Desativado"
+msgstr "Desativado"
+
+msgid "Desativados"
+msgstr "Desativados"
+
+msgid "Todos"
+msgstr "Todos"
+
+msgid "Nenhum resultado encontrado."
+msgstr "Nenhum resultado encontrado."
+
+# --- User Management (signup.html) ---
+msgid "Matrix | Usuários"
+msgstr "Matrix | Usuários"
+
+msgid "Gerenciamento de Usuários"
+msgstr "Gerenciamento de Usuários"
+
+msgid "Novo Usuário"
+msgstr "Novo Usuário"
+
+msgid "Total de Usuários"
+msgstr "Total de Usuários"
+
+msgid "Buscar usuário..."
+msgstr "Buscar usuário..."
+
+msgid "Usuário (tabela)"
+msgstr "Usuário"
+
+msgid "BU"
+msgstr "BU"
+
+msgid "Perfil"
+msgstr "Perfil"
+
+msgid "Último Login"
+msgstr "Último Login"
+
+msgid "Nenhum usuário encontrado."
+msgstr "Nenhum usuário encontrado."
+
+msgid "Editar Usuário"
+msgstr "Editar Usuário"
+
+msgid "Nome"
+msgstr "Nome"
+
+msgid "Sobrenome"
+msgstr "Sobrenome"
+
+msgid "Email"
+msgstr "Email"
+
+msgid "Unidade de Negócio"
+msgstr "Unidade de Negócio"
+
+msgid "Perfil de Acesso"
+msgstr "Perfil de Acesso"
+
+msgid "Operador"
+msgstr "Operador"
+
+msgid "Administrador"
+msgstr "Administrador"
+
+msgid "Erro ao comunicar com servidor."
+msgstr "Erro ao comunicar com servidor."
+
+# --- Approval ---
+msgid "Matrix | Aprovação de SBOMs"
+msgstr "Matrix | Aprovação de SBOMs"
+
+msgid "Aprovação de SBOMs"
+msgstr "Aprovação de SBOMs"
+
+msgid "Pendentes"
+msgstr "Pendentes"
+
+msgid "Rejeitados"
+msgstr "Rejeitados"
+
+msgid "Aprovados"
+msgstr "Aprovados"
+
+msgid "Aguardando Aprovação"
+msgstr "Aguardando Aprovação"
+
+msgid "Enviado por"
+msgstr "Enviado por"
+
+msgid "Data"
+msgstr "Data"
+
+msgid "Nenhum SBOM encontrado."
+msgstr "Nenhum SBOM encontrado."
+
+msgid "Pendente"
+msgstr "Pendente"
+
+msgid "Aprovado"
+msgstr "Aprovado"
+
+msgid "Rejeitado"
+msgstr "Rejeitado"
+
+msgid "Ver componentes"
+msgstr "Ver componentes"
+
+msgid "Aprovar"
+msgstr "Aprovar"
+
+msgid "Rejeitar"
+msgstr "Rejeitar"
+
+msgid "Rejeitar SBOM"
+msgstr "Rejeitar SBOM"
+
+msgid "Motivo da rejeição (obrigatório)..."
+msgstr "Motivo da rejeição (obrigatório)..."
+
+msgid "Confirmar Rejeição"
+msgstr "Confirmar Rejeição"
+
+msgid "Rejeitando..."
+msgstr "Rejeitando..."
+
+msgid "Componente"
+msgstr "Componente"
+
+msgid "Motivo obrigatório"
+msgstr "Motivo obrigatório"
+
+msgid "Erro ao aprovar."
+msgstr "Erro ao aprovar."
+
+msgid "Erro ao comunicar com o servidor."
+msgstr "Erro ao comunicar com o servidor."
+
+msgid "Erro ao rejeitar."
+msgstr "Erro ao rejeitar."
+
+# --- Archive ---
+msgid "Matrix | Arquivo de SBOMs"
+msgstr "Matrix | Arquivo de SBOMs"
+
+msgid "Arquivo"
+msgstr "Arquivo"
+
+msgid "Produtos Arquivados"
+msgstr "Produtos Arquivados"
+
+msgid "Total Componentes"
+msgstr "Total Componentes"
+
+msgid "Total CVEs"
+msgstr "Total CVEs"
+
+msgid "Espaço em Disco"
+msgstr "Espaço em Disco"
+
+msgid "Buscar por nome do produto..."
+msgstr "Buscar por nome do produto..."
+
+msgid "Desativado em"
+msgstr "Desativado em"
+
+msgid "Hash"
+msgstr "Hash"
+
+msgid "Nenhum SBOM arquivado encontrado."
+msgstr "Nenhum SBOM arquivado encontrado."
+
+msgid "Deletar permanentemente?"
+msgstr "Deletar permanentemente?"
+
+msgid "Esta ação não pode ser desfeita."
+msgstr "Esta ação não pode ser desfeita."
+
+msgid "Confirmar"
+msgstr "Confirmar"
+
+msgid "Deletando..."
+msgstr "Deletando..."
+
+msgid "Buscar componente..."
+msgstr "Buscar componente..."
+
+msgid "Todas severidades"
+msgstr "Todas severidades"
+
+msgid "Nenhum componente encontrado."
+msgstr "Nenhum componente encontrado."
+
+msgid "Hashes de Integridade · SHA-256"
+msgstr "Hashes de Integridade · SHA-256"
+
+msgid "Copiado!"
+msgstr "Copiado!"
+
+# --- User Management (user_management.html) ---
+msgid "Matrix | Gestão de Acesso"
+msgstr "Matrix | Gestão de Acesso"
+
+msgid "Gestão de Acesso"
+msgstr "Gestão de Acesso"
+
+msgid "Usuários"
+msgstr "Usuários"
+
+msgid "Unidades de Negócio"
+msgstr "Unidades de Negócio"
+
+msgid "Total"
+msgstr "Total"
+
+msgid "Buscar por nome, usuário ou BU..."
+msgstr "Buscar por nome, usuário ou BU..."
+
+msgid "Novo usuário criado com sucesso."
+msgstr "Novo usuário criado com sucesso."
+
+msgid "Nome da Unidade de Negócio"
+msgstr "Nome da Unidade de Negócio"
+
+msgid "Adicionar BU"
+msgstr "Adicionar BU"
+
+msgid "Adicionando..."
+msgstr "Adicionando..."
+
+msgid "Nenhuma BU cadastrada."
+msgstr "Nenhuma BU cadastrada."
+
+msgid "Erro ao criar BU."
+msgstr "Erro ao criar BU."
+
+msgid "Criar Usuário"
+msgstr "Criar Usuário"
+
+msgid "Nome de usuário"
+msgstr "Nome de usuário"
+
+msgid "Senha inicial"
+msgstr "Senha inicial"
+
+# --- Dashboard ---
+msgid "Matrix SBOM Manager | Dashboard"
+msgstr "Matrix SBOM Manager | Dashboard"
+
+msgid "SBOM Monitor and Security Intelligence"
+msgstr "SBOM Monitor and Security Intelligence"
+
+msgid "Bem-vindo"
+msgstr "Bem-vindo"
+
+msgid "Usuários & BUs"
+msgstr "Usuários & BUs"
+
+msgid "Aprovações"
+msgstr "Aprovações"
+
+msgid "Vuln Hunting"
+msgstr "Vuln Hunting"
+
+msgid "Sair do Sistema"
+msgstr "Sair do Sistema"
+
+msgid "SBOMs Monitorados"
+msgstr "SBOMs Monitorados"
+
+msgid "BU Atual"
+msgstr "BU Atual"
+
+msgid "Total de Vulnerabilidades"
+msgstr "Total de Vulnerabilidades"
+
+msgid "Exposição"
+msgstr "Exposição"
+
+msgid "Corrigidas / Mitigadas"
+msgstr "Corrigidas / Mitigadas"
+
+msgid "Inventário de Software"
+msgstr "Inventário de Software"
+
+msgid "Gerencie componentes, analise riscos e execute scans de segurança."
+msgstr "Gerencie componentes, analise riscos e execute scans de segurança."
+
+msgid "Scan de SBOM"
+msgstr "Scan de SBOM"
+
+msgid "Firmware File"
+msgstr "Firmware File"
+
+msgid "CSV Manual"
+msgstr "CSV Manual"
+
+msgid "Acesso somente leitura"
+msgstr "Acesso somente leitura"
+
+msgid "Produto / Sistema"
+msgstr "Produto / Sistema"
+
+msgid "Responsável"
+msgstr "Responsável"
+
+msgid "Área de Negócio"
+msgstr "Área de Negócio"
+
+msgid "Processamento"
+msgstr "Processamento"
+
+msgid "Status de Risco"
+msgstr "Status de Risco"
+
+msgid "Consolidado"
+msgstr "Consolidado"
+
+msgid "Processando..."
+msgstr "Processando..."
+
+msgid "Aguardando..."
+msgstr "Aguardando..."
+
+msgid "Em Validação"
+msgstr "Em Validação"
+
+msgid "Falhou"
+msgstr "Falhou"
+
+msgid "Nenhum produto encontrado para sua unidade de negócio."
+msgstr "Nenhum produto encontrado para sua unidade de negócio."
+
+msgid "Página"
+msgstr "Página"
+
+msgid "de"
+msgstr "de"
+
+msgid "produto"
+msgstr "produto"
+
+msgid "produtos"
+msgstr "produtos"
+
+msgid "Crítico"
+msgstr "Crítico"
+
+msgid "Alto"
+msgstr "Alto"
+
+msgid "Médio"
+msgstr "Médio"
+
+msgid "Baixo"
+msgstr "Baixo"
+
+msgid "Mínimo"
+msgstr "Mínimo"
+
+msgid "Críticas"
+msgstr "Críticas"
+
+msgid "Sem críticas"
+msgstr "Sem críticas"
+
+msgid "Limpo"
+msgstr "Limpo"
+
+msgid "Vulnerabilidades"
+msgstr "Vulnerabilidades"
+
+msgid "Voltar ao Inventário"
+msgstr "Voltar ao Inventário"
+
+msgid "Gestão de Vulnerabilidades & SBOM"
+msgstr "Gestão de Vulnerabilidades & SBOM"
+
+msgid "Editar Dependências"
+msgstr "Editar Dependências"
+
+msgid "Manutenção de PURLs"
+msgstr "Manutenção de PURLs"
+
+msgid "Explorar Grafo"
+msgstr "Explorar Grafo"
+
+msgid "Visualização Neo4j"
+msgstr "Visualização Neo4j"
+
+msgid "Gerenciar HBOM"
+msgstr "Gerenciar HBOM"
+
+msgid "Componentes de Hardware"
+msgstr "Componentes de Hardware"
+
+msgid "Exportar CycloneDX"
+msgstr "Exportar CycloneDX"
+
+msgid "Download SBOM"
+msgstr "Download SBOM"
+
+msgid "Exportar VEX"
+msgstr "Exportar VEX"
+
+msgid "Remover do Monitoramento"
+msgstr "Remover do Monitoramento"
+
+msgid "Produto ficará inativo"
+msgstr "Produto ficará inativo"
+
+msgid "Matrix Security Engine / File Validation"
+msgstr "Matrix Security Engine / File Validation"
+
+msgid "Nome do Produto"
+msgstr "Nome do Produto"
+
+msgid "Versão do Produto"
+msgstr "Versão do Produto"
+
+msgid "Selecione o arquivo para análise"
+msgstr "Selecione o arquivo para análise"
+
+msgid "Produto automático"
+msgstr "Produto automático"
+
+msgid "Verificando integridade do arquivo..."
+msgstr "Verificando integridade do arquivo..."
+
+msgid "SBOM duplicado — já processado anteriormente"
+msgstr "SBOM duplicado — já processado anteriormente"
+
+msgid "Fechar"
+msgstr "Fechar"
+
+msgid "Iniciar Varredura"
+msgstr "Iniciar Varredura"
+
+msgid "Sem BU"
+msgstr "Sem BU"
+
+msgid "SUPERUSER"
+msgstr "SUPERUSER"
+
+# --- Vulnerability Hunting ---
+msgid "Panorama da BU"
+msgstr "Panorama da BU"
+
+msgid "Top CVEs mais recorrentes"
+msgstr "Top CVEs mais recorrentes"
+
+msgid "Componentes mais vulneráveis"
+msgstr "Componentes mais vulneráveis"
+
+msgid "Nenhuma CVE encontrada."
+msgstr "Nenhuma CVE encontrada."
+
+msgid "Buscar"
+msgstr "Buscar"
+
+msgid "Exportar CSV"
+msgstr "Exportar CSV"
+
+msgid "Por Criticidade"
+msgstr "Por Criticidade"
+
+msgid "Todas as BUs"
+msgstr "Todas as BUs"
+
+msgid "produtos afetados"
+msgstr "produtos afetados"
+
+msgid "Blast Radius"
+msgstr "Blast Radius"
+
+msgid "Timeline de Detecção"
+msgstr "Timeline de Detecção"
+
+msgid "Sem descrição disponível."
+msgstr "Sem descrição disponível."
+
+msgid "Ver no NVD (NIST)"
+msgstr "Ver no NVD (NIST)"
+
+msgid "Ver no OpenCVE"
+msgstr "Ver no OpenCVE"
+
+# --- Dashboard (additional strings) ---
+msgid "Entrar no Sistema"
+msgstr ""
+
+msgid "Análise de Relacionamentos:"
+msgstr ""
+
+msgid "Ambiente de Inspeção Neo4j"
+msgstr ""
+
+msgid "Severidade:"
+msgstr ""
+
+msgid "Todas"
+msgstr ""
+
+msgid "Buscando detalhes..."
+msgstr ""
+
+msgid "Sem descrição"
+msgstr ""
+
+msgid "Cadeia Afetada"
+msgstr ""
+
+msgid "Usado em Ransomware"
+msgstr ""
+
+msgid "Como o Risk Score é calculado"
+msgstr ""
+
+msgid "probabilidade de exploração em 30 dias (0–1)"
+msgstr ""
+
+msgid "se exploit conhecido (KEV), senão 1×"
+msgstr ""
+
+msgid "se usado em ransomware, senão 1×"
+msgstr ""
+
+msgid "Dependência Vulnerável"
+msgstr ""
+
+msgid "vulnerável diretamente"
+msgstr ""
+
+msgid "Cadeia de Dependências Afetada"
+msgstr ""
+
+msgid "Pacotes que dependem (direta ou transitivamente) de componentes com esta CVE"
+msgstr ""
+
+msgid "Descrição"
+msgstr ""
+
+msgid "Ver no NVD"
+msgstr ""
+
+msgid "Carregando componentes..."
+msgstr ""
+
+msgid "Filtrar por nome, versão ou PURL..."
+msgstr ""
+
+msgid "Anterior"
+msgstr ""
+
+msgid "Próximo"
+msgstr ""
+
+msgid "Exibindo"
+msgstr ""
+
+msgid "componente(s) encontrado(s)"
+msgstr ""
+
+msgid "Dependências:"
+msgstr ""
+
+msgid "Licença"
+msgstr ""
+
+msgid "Produtos"
+msgstr ""
+
+msgid "Tipo"
+msgstr ""
+
+msgid "Editar"
+msgstr ""
+
+msgid "Remover"
+msgstr ""
+
+msgid "Voltar"
+msgstr ""
+
+msgid "Somente leitura"
+msgstr ""
+
+msgid "O produto será criado automaticamente a partir do campo"
+msgstr ""
+
+msgid "do manifest RAUC."
+msgstr ""
+
+msgid "O produto será identificado via"
+msgstr ""
+
+msgid "Se não encontrado, o hash do arquivo será usado como nome."
+msgstr ""
+
+# --- HBOM Modal ---
+msgid "Editar Componente"
+msgstr ""
+
+msgid "Novo Componente de Hardware"
+msgstr ""
+
+msgid "Novo Componente"
+msgstr ""
+
+msgid "componentes cadastrados"
+msgstr ""
+
+msgid "Nenhum componente"
+msgstr ""
+
+msgid "Clique em \"Novo Componente\""
+msgstr ""
+
+msgid "Nome / Modelo"
+msgstr ""
+
+msgid "Fabricante"
+msgstr ""
+
+msgid "Versão / Especificação"
+msgstr ""
+
+msgid "Interfaces Expostas"
+msgstr ""
+
+msgid "Propriedades de Segurança"
+msgstr ""
+
+msgid "Firmware Assinado"
+msgstr ""
+
+msgid "Storage Cifrado"
+msgstr ""
+
+msgid "Debug Desabilitado"
+msgstr ""
+
+msgid "Notas"
+msgstr ""
+
+msgid "Observações adicionais..."
+msgstr ""
+
+msgid "Salvar Alterações"
+msgstr ""
+
+msgid "Adicionar Componente"
+msgstr ""
+
+msgid "Selecione um componente"
+msgstr ""
+
+msgid "ou crie um novo"
+msgstr ""
+
+msgid "Mapear Ameaças"
+msgstr ""
+
+msgid "Interfaces"
+msgstr ""
+
+msgid "Ameaças"
+msgstr ""
+
+msgid "Mitigações Pendentes"
+msgstr ""
+
+msgid "Ameaças EMB3D e Mitigações"
+msgstr ""
+
+msgid "Corrigida"
+msgstr ""
+
+msgid "Risco Aceito"
+msgstr ""
+
+# --- Threat Modal ---
+msgid "Ameaças EMB3D"
+msgstr ""
+
+msgid "Selecionar Propriedades"
+msgstr ""
+
+msgid "Confirmar Ameaças"
+msgstr ""
+
+msgid "Selecione as propriedades que se aplicam ao componente"
+msgstr ""
+
+msgid "O sistema irá sugerir as ameaças EMB3D correspondentes."
+msgstr ""
+
+msgid "ameaças"
+msgstr ""
+
+msgid "Buscando ameaças..."
+msgstr ""
+
+msgid "ameaças identificadas com base nas propriedades selecionadas."
+msgstr ""
+
+msgid "Desmarque as que não se aplicam."
+msgstr ""
+
+msgid "Nenhuma ameaça identificada para as propriedades selecionadas."
+msgstr ""
+
+msgid "mitigações disponíveis"
+msgstr ""
+
+msgid "propriedade(s) selecionada(s)"
+msgstr ""
+
+msgid "Ver Ameaças"
+msgstr ""
+
+msgid "Associar"
+msgstr ""
+
+msgid "ameaça(s)"
+msgstr ""
+
+# --- Mitigation Detail Modal ---
+msgid "Status atual:"
+msgstr ""
+
+msgid "Carregando detalhes do EMB3D..."
+msgstr ""
+
+msgid "Referências"
+msgstr ""
+
+msgid "Ver no EMB3D"
+msgstr ""
+
+# --- BU Modal ---
+msgid "Gestão de Business Units"
+msgstr ""
+
+msgid "BU(s) cadastradas"
+msgstr ""
+
+msgid "Nova BU"
+msgstr ""
+
+msgid "Nome da Business Unit..."
+msgstr ""
+
+msgid "Criar"
+msgstr ""
+
+msgid "usuário(s)"
+msgstr ""
+
+msgid "produto(s)"
+msgstr ""
+
+msgid "Deletar BU"
+msgstr ""
+
+# --- VEX Modal ---
+msgid "Atualizar declaração v"
+msgstr ""
+
+msgid "Nova declaração"
+msgstr ""
+
+msgid "Status VEX"
+msgstr ""
+
+msgid "Justificativa CISA"
+msgstr ""
+
+msgid "Selecione uma justificativa..."
+msgstr ""
+
+msgid "obrigatório sem justificativa"
+msgstr ""
+
+msgid "opcional"
+msgstr ""
+
+msgid "Action Statement"
+msgstr ""
+
+msgid "Explique por que esta vulnerabilidade não afeta o produto..."
+msgstr ""
+
+msgid "Descreva as ações de remediação ou mitigação recomendadas..."
+msgstr ""
+
+msgid "Status Notes"
+msgstr ""
+
+msgid "Informações adicionais sobre como o status foi determinado..."
+msgstr ""
+
+msgid "Última declaração por"
+msgstr ""
+
+msgid "em"
+msgstr ""
+
+msgid "Atualizar VEX"
+msgstr ""
+
+msgid "Declarar VEX"
+msgstr ""
+
+# --- CSV Modal ---
+msgid "Criar SBOM Manual via CSV"
+msgstr ""
+
+msgid "Passo 1 — Informar produto e carregar CSV"
+msgstr ""
+
+msgid "Passo 2 — Revisar e editar componentes"
+msgstr ""
+
+msgid "Concluído"
+msgstr ""
+
+msgid "Template CSV"
+msgstr ""
+
+msgid "Arquivo CSV"
+msgstr ""
+
+msgid "Clique para selecionar o CSV"
+msgstr ""
+
+msgid "Ou adicione componentes manualmente após carregar o CSV"
+msgstr ""
+
+msgid "Continuar sem CSV"
+msgstr ""
+
+msgid "componentes"
+msgstr ""
+
+msgid "Nenhum componente. Clique em \"+ Adicionar\" abaixo."
+msgstr ""
+
+msgid "Adicionar linha"
+msgstr ""
+
+msgid "Enviar para Aprovação"
+msgstr ""
+
+msgid "Enviado para aprovação!"
+msgstr ""
+
+msgid "Recarregando..."
+msgstr ""
+
+msgid "nome"
+msgstr ""
+
+msgid "versão"
+msgstr ""

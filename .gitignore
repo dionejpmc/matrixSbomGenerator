@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Django
+*.log
+db.sqlite3
+media/
+
+# Secrets
+.env
+*.env
+.env.*
+
+# Uploads (runtime data)
+matrix/uploads/
+matrix/uploads/**
+uploads/
+uploads/**
+
+# Celery
+matrix/app/celerybeat-schedule
+celerybeat-schedule
+celerybeat.pid
+
+# Docker volumes
+.dockervols/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

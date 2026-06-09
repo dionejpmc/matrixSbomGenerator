@@ -1,0 +1,340 @@
+{% load i18n %}
+{% get_current_language as CURRENT_LANG %}
+<!DOCTYPE html>
+<html lang="{{ CURRENT_LANG }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% trans "Matrix | Aprovação de SBOMs" %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 font-sans min-h-screen"
+      x-data="approvalApp()"
+      x-init="init()">
+
+<form method="POST" id="csrf-form" style="display:none">{% csrf_token %}</form>
+
+<!-- HEADER -->
+<header class="sticky top-0 z-40 border-b border-slate-800 bg-slate-900/95 backdrop-blur-xl">
+    <div class="max-w-screen-xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-6">
+            <a href="{% url 'dashboard' %}" class="flex items-center gap-3 group">
+                <div class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center">
+                    <i class="fas fa-chevron-left text-[10px] text-slate-400 group-hover:text-white transition"></i>
+                </div>
+                <span class="text-lg font-black text-white tracking-tighter italic">MATRIX</span>
+            </a>
+            <div class="w-px h-5 bg-slate-800"></div>
+            <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-purple-400"></div>
+                <span class="text-[11px] font-black uppercase tracking-[0.25em] text-purple-400">{% trans "Aprovação de SBOMs" %}</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <!-- Language Switcher -->
+            <form action="{% url 'set_language' %}" method="post" class="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
+                {% csrf_token %}
+                <input name="next" type="hidden" value="{{ request.get_full_path }}">
+                <button type="submit" name="language" value="pt-br"
+                        class="text-[10px] font-mono px-2 py-1 rounded-lg transition {% if CURRENT_LANG == 'pt-br' %}bg-slate-700 text-white{% else %}text-slate-500 hover:text-white{% endif %}">PT</button>
+                <button type="submit" name="language" value="en"
+                        class="text-[10px] font-mono px-2 py-1 rounded-lg transition {% if CURRENT_LANG == 'en' %}bg-slate-700 text-white{% else %}text-slate-500 hover:text-white{% endif %}">EN</button>
+            </form>
+            <!-- Filtro de status -->
+            <div class="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
+                <template x-for="s in ['VALIDATION', 'REJECTED', 'COMPLETED']" :key="s">
+                    <button @click="filterStatus = s; loadList()"
+                            class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition"
+                            :class="filterStatus === s
+                                ? 'bg-purple-600 text-white'
+                                : 'text-slate-500 hover:text-slate-300'">
+                        <span x-text="s === 'VALIDATION' ? '{% trans "Pendentes" %}' : s === 'REJECTED' ? '{% trans "Rejeitados" %}' : '{% trans "Aprovados" %}'"></span>
+                        <span x-show="s === 'VALIDATION' && counts.pending > 0"
+                              class="ml-1 bg-red-500 text-white text-[8px] px-1.5 rounded-full"
+                              x-text="counts.pending"></span>
+                    </button>
+                </template>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- MAIN -->
+<main class="max-w-screen-xl mx-auto px-6 py-8">
+
+    <!-- Erro de aprovação -->
+    <div x-show="approveError" x-cloak
+         class="mb-4 flex items-center gap-3 px-5 py-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400">
+        <i class="fas fa-triangle-exclamation"></i>
+        <p class="text-sm font-bold flex-1" x-text="approveError"></p>
+        <button @click="approveError = ''" class="text-red-400 hover:text-red-300">
+            <i class="fas fa-times text-xs"></i>
+        </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-3 gap-4 mb-6">
+        <div class="bg-slate-800/60 border border-slate-700 rounded-2xl p-5">
+            <p class="text-[9px] font-mono uppercase tracking-widest text-slate-500 mb-2">{% trans "Aguardando Aprovação" %}</p>
+            <p class="text-3xl font-black text-yellow-400" x-text="counts.pending"></p>
+        </div>
+        <div class="bg-slate-800/60 border border-slate-700 rounded-2xl p-5">
+            <p class="text-[9px] font-mono uppercase tracking-widest text-slate-500 mb-2">{% trans "Aprovados" %}</p>
+            <p class="text-3xl font-black text-green-400" x-text="counts.approved"></p>
+        </div>
+        <div class="bg-slate-800/60 border border-slate-700 rounded-2xl p-5">
+            <p class="text-[9px] font-mono uppercase tracking-widest text-slate-500 mb-2">{% trans "Rejeitados" %}</p>
+            <p class="text-3xl font-black text-red-400" x-text="counts.rejected"></p>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-slate-800/40 border border-slate-700 rounded-2xl overflow-hidden">
+        <table class="w-full text-left">
+            <thead>
+                <tr class="border-b border-slate-700 bg-slate-800/60">
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Produto" %}</th>
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Componentes" %}</th>
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Enviado por" %}</th>
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Data" %}</th>
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Status" %}</th>
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Ações" %}</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                <template x-if="loading">
+                    <tr><td colspan="6" class="px-6 py-12 text-center text-slate-600"><i class="fas fa-spinner fa-spin mr-2"></i> {% trans "Carregando..." %}</td></tr>
+                </template>
+                <template x-if="!loading && uploads.length === 0">
+                    <tr><td colspan="6" class="px-6 py-12 text-center text-slate-600 italic">{% trans "Nenhum SBOM encontrado." %}</td></tr>
+                </template>
+                <template x-for="u in uploads" :key="u.id">
+                    <tr class="hover:bg-slate-800/30 transition">
+                        <td class="px-6 py-4">
+                            <p class="text-sm font-bold text-white" x-text="u.product_name"></p>
+                            <p class="text-[10px] font-mono text-slate-500" x-text="u.product_version || '—'"></p>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="text-sm font-bold text-white" x-text="u.component_count"></span>
+                            <span class="text-[10px] text-slate-600 ml-1">itens</span>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-slate-400" x-text="u.uploaded_by"></td>
+                        <td class="px-6 py-4 text-[11px] font-mono text-slate-500" x-text="u.uploaded_at"></td>
+                        <td class="px-6 py-4">
+                            <span class="text-[10px] font-black px-2.5 py-1 rounded-lg border"
+                                  :class="{
+                                      'bg-yellow-500/15 text-yellow-400 border-yellow-500/30': u.status === 'VALIDATION',
+                                      'bg-green-500/15 text-green-400 border-green-500/30': u.status === 'COMPLETED',
+                                      'bg-red-500/15 text-red-400 border-red-500/30': u.status === 'REJECTED',
+                                  }"
+                                  x-text="u.status === 'VALIDATION' ? '{% trans "Pendente" %}' : u.status === 'COMPLETED' ? '{% trans "Aprovado" %}' : '{% trans "Rejeitado" %}'">
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex items-center gap-2" x-show="u.status === 'VALIDATION'">
+                                <button @click="viewComponents(u)"
+                                        class="p-2 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-400 hover:text-white transition"
+                                        title="{% trans 'Ver componentes' %}">
+                                    <i class="fas fa-list text-xs"></i>
+                                </button>
+                                <button @click="approve(u)"
+                                        :disabled="approving === u.id"
+                                        class="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white text-xs font-black transition">
+                                    <i class="fas fa-check mr-1"></i> {% trans "Aprovar" %}
+                                </button>
+                                <button @click="openReject(u)"
+                                        class="px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-400 text-xs font-black transition">
+                                    <i class="fas fa-times mr-1"></i> {% trans "Rejeitar" %}
+                                </button>
+                            </div>
+                            <div x-show="u.status !== 'VALIDATION'" class="text-[10px] font-mono text-slate-600">
+                                <span x-show="u.reviewed_by">por <span class="text-slate-400" x-text="u.reviewed_by"></span></span>
+                                <span x-show="u.rejection_reason" class="block text-red-500/70 mt-0.5" x-text="u.rejection_reason"></span>
+                            </div>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<!-- COMPONENTES MODAL -->
+<div x-show="compModal.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div @click="compModal.open = false" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+    <div class="relative w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden" style="max-height:80vh">
+        <div class="px-8 py-5 border-b border-slate-800 flex items-center justify-between">
+            <p class="text-white font-black" x-text="'{% trans "Componentes" %} — ' + compModal.product"></p>
+            <button @click="compModal.open = false" class="p-2 rounded-xl bg-slate-800 border border-slate-700">
+                <i class="fas fa-times text-slate-400 text-xs"></i>
+            </button>
+        </div>
+        <div class="overflow-y-auto" style="max-height:60vh">
+            <table class="w-full text-left">
+                <thead class="sticky top-0 bg-slate-900 border-b border-slate-800">
+                    <tr>
+                        <th class="px-6 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Componente" %}</th>
+                        <th class="px-6 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Versão" %}</th>
+                        <th class="px-6 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">PURL</th>
+                        <th class="px-6 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">CPE</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/50">
+                    <template x-for="c in compModal.components" :key="c.id">
+                        <tr>
+                            <td class="px-6 py-3 text-sm font-mono text-white" x-text="c.name"></td>
+                            <td class="px-6 py-3 text-xs font-mono text-slate-400" x-text="c.version"></td>
+                            <td class="px-6 py-3 text-[9px] font-mono text-slate-500 truncate max-w-xs" x-text="c.purl || '—'"></td>
+                            <td class="px-6 py-3 text-[9px] font-mono text-slate-500 truncate max-w-xs" x-text="c.cpe || '—'"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- REJEITAR MODAL -->
+<div x-show="rejectModal.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div @click="rejectModal.open = false" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+    <div class="relative w-full max-w-md bg-slate-900 border border-red-500/30 rounded-2xl shadow-2xl p-8">
+        <h3 class="text-white font-black text-lg mb-2">{% trans "Rejeitar SBOM" %}</h3>
+        <p class="text-slate-400 text-sm mb-4">
+            {% trans "Produto" %}: <span class="text-white font-bold" x-text="rejectModal.upload?.product_name"></span>
+        </p>
+        <textarea x-model="rejectModal.reason" rows="3"
+                  placeholder="{% trans 'Motivo da rejeição (obrigatório)...' %}"
+                  class="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-red-500/50 resize-none mb-4"></textarea>
+        <p x-show="rejectModal.error" class="text-[10px] text-red-400 mb-3" x-text="rejectModal.error"></p>
+        <div class="flex gap-3">
+            <button @click="rejectModal.open = false"
+                    class="flex-1 py-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 text-sm font-bold">
+                {% trans "Cancelar" %}
+            </button>
+            <button @click="confirmReject()"
+                    :disabled="rejectModal.saving"
+                    class="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-black transition disabled:opacity-50">
+                <span x-text="rejectModal.saving ? '{% trans "Rejeitando..." %}' : '{% trans "Confirmar Rejeição" %}'"></span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function approvalApp() {
+    return {
+        loading: true,
+        uploads: [],
+        filterStatus: 'VALIDATION',
+        approving: null,
+        approveError: '',
+        counts: { pending: 0, approved: 0, rejected: 0 },
+        compModal: { open: false, product: '', components: [] },
+        rejectModal: { open: false, upload: null, reason: '', saving: false, error: '' },
+
+        async init() {
+            await this.loadCounts();
+            await this.loadList();
+        },
+
+        async loadCounts() {
+            try {
+                const [p, a, r] = await Promise.all([
+                    fetch('/sbom/api/approval/?status=VALIDATION').then(r => r.json()),
+                    fetch('/sbom/api/approval/?status=COMPLETED').then(r => r.json()),
+                    fetch('/sbom/api/approval/?status=REJECTED').then(r => r.json()),
+                ]);
+                this.counts = {
+                    pending:  (p.uploads || []).length,
+                    approved: (a.uploads || []).length,
+                    rejected: (r.uploads || []).length,
+                };
+            } catch(e) {}
+        },
+
+        async loadList() {
+            this.loading = true;
+            try {
+                const res = await fetch(`/sbom/api/approval/?status=${this.filterStatus}`);
+                const data = await res.json();
+                this.uploads = data.uploads || [];
+            } catch(e) {}
+            finally { this.loading = false; }
+        },
+
+        async viewComponents(u) {
+            try {
+                const res = await fetch(`/sbom/api/components/${u.product_id}/`);
+                const data = await res.json();
+                this.compModal = {
+                    open: true,
+                    product: u.product_name,
+                    components: data.components || [],
+                };
+            } catch(e) {}
+        },
+
+        async approve(u) {
+            if (!confirm(`{% trans "Aprovar" %} "${u.product_name}"?`)) return;
+            this.approving = u.id;
+            this.approveError = '';
+            const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+            try {
+                const res = await fetch(`/sbom/api/approval/${u.id}/approve/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrf },
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    this.uploads = this.uploads.filter(x => x.id !== u.id);
+                    this.counts.pending--;
+                    this.counts.approved++;
+                } else {
+                    this.approveError = data.error || '{% trans "Erro ao aprovar." %}';
+                }
+            } catch(e) {
+                this.approveError = '{% trans "Erro ao comunicar com o servidor." %}';
+            } finally {
+                this.approving = null;
+            }
+        },
+
+        openReject(u) {
+            this.rejectModal = { open: true, upload: u, reason: '', saving: false, error: '' };
+        },
+
+        async confirmReject() {
+            if (!this.rejectModal.reason.trim()) {
+                this.rejectModal.error = '{% trans "Motivo obrigatório" %}';
+                return;
+            }
+            this.rejectModal.saving = true;
+            const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+            try {
+                const res = await fetch(`/sbom/api/approval/${this.rejectModal.upload.id}/reject/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                    body: JSON.stringify({ reason: this.rejectModal.reason }),
+                });
+                if (res.ok) {
+                    this.uploads = this.uploads.filter(x => x.id !== this.rejectModal.upload.id);
+                    this.counts.pending--;
+                    this.counts.rejected++;
+                    this.rejectModal.open = false;
+                }
+            } catch(e) { this.rejectModal.error = '{% trans "Erro ao rejeitar." %}'; }
+            finally { this.rejectModal.saving = false; }
+        },
+    }
+}
+</script>
+</body>
+</html>

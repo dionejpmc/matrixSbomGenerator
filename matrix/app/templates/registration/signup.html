@@ -1,0 +1,332 @@
+{% load i18n %}
+{% get_current_language as CURRENT_LANG %}
+<!DOCTYPE html>
+<html lang="{{ CURRENT_LANG }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% trans "Matrix | Usuários" %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>[x-cloak] { display: none !important; }</style>
+</head>
+<body class="bg-slate-900 text-slate-200 min-h-screen"
+      x-data="userApp()" x-init="init()">
+
+<form id="csrf-form" method="POST" style="display:none">{% csrf_token %}</form>
+
+<!-- HEADER -->
+<header class="sticky top-0 z-40 border-b border-slate-800 bg-slate-900/95 backdrop-blur-xl">
+    <div class="max-w-screen-xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-6">
+            <a href="{% url 'dashboard' %}" class="flex items-center gap-3 group">
+                <div class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center">
+                    <i class="fas fa-chevron-left text-[10px] text-slate-400 group-hover:text-white transition"></i>
+                </div>
+                <span class="text-lg font-black text-white tracking-tighter italic">MATRIX</span>
+            </a>
+            <div class="w-px h-5 bg-slate-800"></div>
+            <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-blue-400"></div>
+                <span class="text-[11px] font-black uppercase tracking-[0.25em] text-blue-400">{% trans "Gerenciamento de Usuários" %}</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <!-- Language Switcher -->
+            <form action="{% url 'set_language' %}" method="post" class="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
+                {% csrf_token %}
+                <input name="next" type="hidden" value="{{ request.get_full_path }}">
+                <button type="submit" name="language" value="pt-br"
+                        class="text-[10px] font-mono px-2 py-1 rounded-lg transition {% if CURRENT_LANG == 'pt-br' %}bg-slate-700 text-white{% else %}text-slate-500 hover:text-white{% endif %}">PT</button>
+                <button type="submit" name="language" value="en"
+                        class="text-[10px] font-mono px-2 py-1 rounded-lg transition {% if CURRENT_LANG == 'en' %}bg-slate-700 text-white{% else %}text-slate-500 hover:text-white{% endif %}">EN</button>
+            </form>
+            <a href="{% url 'signup' %}"
+               class="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black transition">
+                <i class="fas fa-plus text-[10px]"></i> {% trans "Novo Usuário" %}
+            </a>
+        </div>
+    </div>
+</header>
+
+<!-- MAIN -->
+<main class="max-w-screen-xl mx-auto px-6 py-8">
+
+    <!-- Stats -->
+    <div class="grid grid-cols-3 gap-4 mb-6">
+        <div class="bg-slate-800/60 border border-slate-700 rounded-2xl p-5">
+            <p class="text-[9px] font-mono uppercase tracking-widest text-slate-500 mb-2">{% trans "Total de Usuários" %}</p>
+            <p class="text-3xl font-black text-white" x-text="users.length"></p>
+        </div>
+        <div class="bg-slate-800/60 border border-slate-700 rounded-2xl p-5">
+            <p class="text-[9px] font-mono uppercase tracking-widest text-slate-500 mb-2">{% trans "Ativos" %}</p>
+            <p class="text-3xl font-black text-green-400" x-text="users.filter(u => u.is_active).length"></p>
+        </div>
+        <div class="bg-slate-800/60 border border-slate-700 rounded-2xl p-5">
+            <p class="text-[9px] font-mono uppercase tracking-widest text-slate-500 mb-2">{% trans "Desativados" %}</p>
+            <p class="text-3xl font-black text-red-400" x-text="users.filter(u => !u.is_active).length"></p>
+        </div>
+    </div>
+
+    <!-- Filtro -->
+    <div class="flex items-center gap-3 mb-4">
+        <div class="flex gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
+            <button @click="filter = 'all'"
+                    class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition"
+                    :class="filter === 'all' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300'">
+                {% trans "Todos" %}
+            </button>
+            <button @click="filter = 'active'"
+                    class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition"
+                    :class="filter === 'active' ? 'bg-green-600 text-white' : 'text-slate-500 hover:text-slate-300'">
+                {% trans "Ativos" %}
+            </button>
+            <button @click="filter = 'inactive'"
+                    class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition"
+                    :class="filter === 'inactive' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-slate-300'">
+                {% trans "Desativados" %}
+            </button>
+        </div>
+        <input type="text" x-model="search" placeholder="{% trans 'Buscar usuário...' %}"
+               class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-slate-500 w-64">
+    </div>
+
+    <!-- Tabela -->
+    <div class="bg-slate-800/40 border border-slate-700 rounded-2xl overflow-hidden">
+        <table class="w-full text-left">
+            <thead>
+                <tr class="border-b border-slate-700 bg-slate-800/60">
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Usuário (tabela)" %}</th>
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "BU" %}</th>
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Perfil" %}</th>
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Último Login" %}</th>
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Status" %}</th>
+                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Ações" %}</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                <template x-if="loading">
+                    <tr><td colspan="6" class="px-6 py-12 text-center text-slate-600">
+                        <i class="fas fa-spinner fa-spin mr-2"></i> {% trans "Carregando..." %}
+                    </td></tr>
+                </template>
+                <template x-for="u in filteredUsers" :key="u.id">
+                    <tr class="hover:bg-slate-800/30 transition" :class="!u.is_active ? 'opacity-50' : ''">
+                        <td class="px-6 py-4">
+                            <p class="text-sm font-bold text-white" x-text="u.username"></p>
+                            <p class="text-[10px] text-slate-500" x-text="[u.first_name, u.last_name].filter(Boolean).join(' ') || '—'"></p>
+                            <p class="text-[10px] font-mono text-slate-600" x-text="u.email || '—'"></p>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-slate-400" x-text="u.bu"></td>
+                        <td class="px-6 py-4">
+                            <span class="text-[10px] font-black px-2.5 py-1 rounded-lg border"
+                                  :class="{
+                                      'bg-red-500/15 text-red-400 border-red-500/30': u.role === 'admin' || u.is_superuser,
+                                      'bg-blue-500/15 text-blue-400 border-blue-500/30': u.role === 'operator',
+                                      'bg-slate-700 text-slate-400 border-slate-600': u.role === 'viewer',
+                                  }"
+                                  x-text="u.is_superuser ? 'Superuser' : u.role === 'admin' ? '{% trans "Administrador" %}' : u.role === 'operator' ? '{% trans "Operador" %}' : 'Viewer'">
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-[11px] font-mono text-slate-500" x-text="u.last_login"></td>
+                        <td class="px-6 py-4">
+                            <span class="text-[10px] font-black px-2.5 py-1 rounded-lg border"
+                                  :class="u.is_active
+                                      ? 'bg-green-500/15 text-green-400 border-green-500/30'
+                                      : 'bg-red-500/15 text-red-400 border-red-500/30'"
+                                  x-text="u.is_active ? '{% trans "Ativo" %}' : '{% trans "Desativado" %}'">
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex items-center gap-2" x-show="!u.is_superuser">
+                                <button @click="openEdit(u)"
+                                        class="p-2 rounded-lg bg-slate-700 hover:bg-blue-600/30 border border-slate-600 hover:border-blue-500/30 text-slate-400 hover:text-blue-400 transition"
+                                        title="{% trans 'Editar Usuário' %}">
+                                    <i class="fas fa-pen text-xs"></i>
+                                </button>
+                                <button x-show="u.is_active"
+                                        @click="deactivate(u)"
+                                        class="p-2 rounded-lg bg-slate-700 hover:bg-red-600/30 border border-slate-600 hover:border-red-500/30 text-slate-400 hover:text-red-400 transition"
+                                        title="{% trans 'Desativado' %}">
+                                    <i class="fas fa-ban text-xs"></i>
+                                </button>
+                                <button x-show="!u.is_active"
+                                        @click="activate(u)"
+                                        class="p-2 rounded-lg bg-slate-700 hover:bg-green-600/30 border border-slate-600 hover:border-green-500/30 text-slate-400 hover:text-green-400 transition"
+                                        title="{% trans 'Ativos' %}">
+                                    <i class="fas fa-circle-check text-xs"></i>
+                                </button>
+                            </div>
+                            <span x-show="u.is_superuser" class="text-[10px] text-slate-600 font-mono">—</span>
+                        </td>
+                    </tr>
+                </template>
+                <template x-if="!loading && filteredUsers.length === 0">
+                    <tr><td colspan="6" class="px-6 py-12 text-center text-slate-600 italic">{% trans "Nenhum usuário encontrado." %}</td></tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<!-- EDITAR MODAL -->
+<div x-show="editModal.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div @click="editModal.open = false" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+    <div class="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-8">
+        <h3 class="text-white font-black text-lg mb-5">{% trans "Editar Usuário" %}</h3>
+
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <p class="text-[10px] font-black uppercase tracking-widests text-slate-500 mb-1.5">{% trans "Nome" %}</p>
+                    <input type="text" x-model="editModal.first_name"
+                           class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-blue-500/50">
+                </div>
+                <div>
+                    <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">{% trans "Sobrenome" %}</p>
+                    <input type="text" x-model="editModal.last_name"
+                           class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-blue-500/50">
+                </div>
+            </div>
+            <div>
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">{% trans "Email" %}</p>
+                <input type="email" x-model="editModal.email"
+                       class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-blue-500/50">
+            </div>
+            <div>
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">{% trans "Unidade de Negócio" %}</p>
+                <select x-model="editModal.bu_id"
+                        class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none">
+                    <template x-for="bu in bus" :key="bu.id">
+                        <option :value="bu.id" x-text="bu.name" :selected="bu.id == editModal.bu_id"></option>
+                    </template>
+                </select>
+            </div>
+            <div>
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">{% trans "Perfil de Acesso" %}</p>
+                <select x-model="editModal.role"
+                        class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none">
+                    <option value="viewer">Viewer</option>
+                    <option value="operator">{% trans "Operador" %}</option>
+                    <option value="admin">{% trans "Administrador" %}</option>
+                </select>
+            </div>
+        </div>
+
+        <p x-show="editModal.error" class="text-[10px] text-red-400 mt-3" x-text="editModal.error"></p>
+
+        <div class="flex gap-3 mt-6">
+            <button @click="editModal.open = false"
+                    class="flex-1 py-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 text-sm font-bold">
+                {% trans "Cancelar" %}
+            </button>
+            <button @click="saveEdit()"
+                    :disabled="editModal.saving"
+                    class="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-black transition disabled:opacity-50">
+                <span x-text="editModal.saving ? '{% trans "Salvando..." %}' : '{% trans "Salvar" %}'"></span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function userApp() {
+    return {
+        loading: true,
+        users: [],
+        bus: [],
+        filter: 'all',
+        search: '',
+        editModal: { open: false, id: null, first_name: '', last_name: '', email: '', bu_id: null, role: '', saving: false, error: '' },
+
+        get filteredUsers() {
+            return this.users.filter(u => {
+                const matchFilter = this.filter === 'all' ||
+                    (this.filter === 'active' && u.is_active) ||
+                    (this.filter === 'inactive' && !u.is_active);
+                const matchSearch = !this.search ||
+                    u.username.toLowerCase().includes(this.search.toLowerCase()) ||
+                    (u.email || '').toLowerCase().includes(this.search.toLowerCase()) ||
+                    (u.bu || '').toLowerCase().includes(this.search.toLowerCase());
+                return matchFilter && matchSearch;
+            });
+        },
+
+        async init() {
+            await Promise.all([this.loadUsers(), this.loadBUs()]);
+            this.loading = false;
+        },
+
+        async loadUsers() {
+            const res = await fetch('/accounts/api/users/');
+            const data = await res.json();
+            this.users = data.users || [];
+        },
+
+        async loadBUs() {
+            const res = await fetch('/accounts/api/bus/');
+            const data = await res.json();
+            this.bus = data.bus || [];
+        },
+
+        openEdit(u) {
+            this.editModal = {
+                open: true, id: u.id,
+                first_name: u.first_name, last_name: u.last_name,
+                email: u.email, bu_id: u.bu_id, role: u.role,
+                saving: false, error: '',
+            };
+        },
+
+        async saveEdit() {
+            this.editModal.saving = true;
+            this.editModal.error = '';
+            const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+            try {
+                const res = await fetch(`/accounts/api/users/${this.editModal.id}/edit/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                    body: JSON.stringify({
+                        first_name: this.editModal.first_name,
+                        last_name: this.editModal.last_name,
+                        email: this.editModal.email,
+                        bu_id: this.editModal.bu_id,
+                        role: this.editModal.role,
+                    }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    await this.loadUsers();
+                    this.editModal.open = false;
+                } else {
+                    this.editModal.error = data.error || '{% trans "Erro ao salvar." %}';
+                }
+            } catch(e) {
+                this.editModal.error = '{% trans "Erro ao comunicar com servidor." %}';
+            } finally {
+                this.editModal.saving = false;
+            }
+        },
+
+        async deactivate(u) {
+            if (!confirm(`{% trans "Desativado" %} "${u.username}"?`)) return;
+            const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+            const res = await fetch(`/accounts/api/users/${u.id}/deactivate/`, {
+                method: 'POST', headers: { 'X-CSRFToken': csrf },
+            });
+            if (res.ok) await this.loadUsers();
+        },
+
+        async activate(u) {
+            const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+            const res = await fetch(`/accounts/api/users/${u.id}/activate/`, {
+                method: 'POST', headers: { 'X-CSRFToken': csrf },
+            });
+            if (res.ok) await this.loadUsers();
+        },
+    }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+user:admin
+password:admin
+email:admin@admin.com
+
+
+sudo docker compose exec app python manage.py shell -c "
+from apps.organizations.models import Product, BusinessUnit, UserBUMembership
+from django.contrib.auth.models import User
+
+bu, _ = BusinessUnit.objects.get_or_create(name='WEG S.A')
+
+# Associa admin à BU
+user = User.objects.get(username='admin')
+UserBUMembership.objects.get_or_create(user=user, business_unit=bu, defaults={'role': 'admin'})
+"
+# Associa produtos sem BU
+updated = Product.objects.filter(business_unit__isnull=True).update(business_unit=bu)
+print(f'BU criada: {bu.name}')
+print(f'{updated} produtos associados')
+"
+
+docker compose exec app psql "postgres://matrix_user:uma_senha_forte_aqui@matrix-db:5432/matrix" -c "SELECT * FROM sbom_component;"
+docker compose exec db psql -U matrix_user -d matrix -c "SELECT * FROM organizations_businessunit;"
+docker compose exec db psql -U matrix_user -d matrix -c "SELECT * FROM organizations_product;" 
+
+└─$ sudo docker exec matrix-worker bash -c "                                      
+for i in \$(seq 0 7); do
+    mknod -m 660 /dev/loop\$i b 7 \$i 2>/dev/null || true
+done
+echo 'Loop devices criados'
+ls /dev/loop*
+"
+
+
+
+docker compose exec db psql -U matrix_user -d matrix -c "SELECT * FROM vulnerabilities_vulnerability;"  
+
+docker compose exec db psql -U matrix_user -d matrix -c "SELECT * FROM sbom_vulnerability;"   
+
+docker exec -it matrix-worker ls /data/uploads/sboms/2026/05/05
+docker exec -it matrix-worker sh -c "rm -rf /data/uploads/*"
+
+ docker exec -it matrix-graph cypher-shell -u neo4j -p outra_senha_forte_aqui "MATCH (p:Product {db_id: "1"}) RETURN p;"
+
+ docker compose exec db psql -U matrix_user -d matrix -c "\dt"
+
+
+
+
+
+
+docker exec -it matrix-graph bash
+cypher-shell -u neo4j -p outra_senha_forte_aqui
+ MATCH (n) RETURN n LIMIT 50;
+ CALL db.labels();
+
+ 
+MATCH (:Product {name: "Teste X1"})-[:HAS_COMPONENT]->(c:Component)
+RETURN split(c.purl, ':')[1] AS ecossistema, count(*) AS total
+ORDER BY total DESC;
+
+MATCH (:Product {name: "Teste X1"})-[:HAS_COMPONENT]->(c:Component)
+RETURN split(c.purl, ':')[1] AS ecossistema, count(*) AS total
+ORDER BY total DESC
+LIMIT 10;
+
+
+
+MATCH (p:Product {name: "Teste V1"})
+SET p.db_id = "1"
+RETURN p;
+
+
+CALL db.schema.visualization();
+CALL db.labels();
+CALL db.relationshipTypes();
+CALL db.propertyKeys();
+
+Conceito SQL (Relacional),         Conceito Neo4j (Grafos),         Comando de Inspeção
+Tabela,                            Label (Rótulo de Nó),            CALL db.labels();
+Linha/Registro,                    Node (Nó),                       MATCH (n:Label) RETURN n;
+Coluna,                            Property (Propriedade),          CALL db.propertyKeys();
+Foreign Key / Join,                Relationship (Relacionamento),   CALL db.relationshipTypes();
+
+
+@dionejpmc ➜ /workspaces/matrix/matrix (main) $ docker exec matrix-graph cypher-shell -u neo4j -p outra_senha_forte_aqui "MATCH (c:Component)-[:HAS_VULNERABILITY]->(v:CVE) WHERE c.name = 'libfreetype6' RETURN c.name, c.version, count(v) as total_vulns"
+
+@dionejpmc ➜ /workspaces/matrix/matrix (main) $ docker exec matrix-graph cypher-shell -u neo4j -p outra_senha_forte_aqui "MATCH (c:Component)-[:HAS_VULNERABILITY]->(v:CVE) WHERE c.name = 'libfreetype6' RETURN v.cveId, v.severity"
+
+docker compose exec db psql -U matrix_user -d matrix -c "SELECT severity, COUNT(*) FROM sbom_vulnerability GROUP BY severity ORDER BY COUNT(*) DESC;"
+
+# Criar loop device,nece´ario ao imiciar o sistema Linux
+└─$ sudo docker exec matrix-worker bash -c "                                      
+for i in \$(seq 0 7); do
+    mknod -m 660 /dev/loop\$i b 7 \$i 2>/dev/null || true
+done
+echo 'Loop devices criados'
+ls /dev/loop*
+"
+
+#Forçar o re-scan
+sudo docker compose exec worker celery -A core call tasks.scheduled_tasks.update_grype_db
+sudo docker compose exec worker celery -A core call tasks.scheduled_tasks.daily_rescan_all
+
+
+
+
+
+# Testar integridade dos dados, se não tem diferença entre as bases
+sudo docker compose exec app bash -c "
+POSTGRES_HOST=db \
+POSTGRES_USER=\$POSTGRES_USER \
+POSTGRES_PASSWORD=\$POSTGRES_PASSWORD \
+POSTGRES_DB=\$POSTGRES_DB \
+NEO4J_URI=bolt://matrix-graph:7687 \
+NEO4J_USER=\$NEO4J_USER \
+NEO4J_PASSWORD=\$NEO4J_PASSWORD \
+python check_integrity.py
+"
