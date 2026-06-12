@@ -210,6 +210,75 @@ All endpoints require an authenticated session. Required roles are indicated bel
 
 ---
 
+## SBOM Status Reference
+
+### Upload Status (`SbomUpload.status`)
+
+Each uploaded SBOM (CycloneDX JSON, CSV, RAUC, or EXT4) goes through a lifecycle tracked by the `status` field.
+
+| Status | Label | Description |
+|--------|-------|-------------|
+| `PENDING` | Pendente | Upload received and queued; waiting for the Celery worker to begin processing |
+| `PROCESSING` | Processando | Celery task is actively parsing components and ingesting into PostgreSQL + Neo4j |
+| `COMPLETED` | Concluído | Pipeline finished; components, CVEs and Neo4j graph are up to date |
+| `FAILED` | Falha | Processing error (duplicate detected for an active product, or unhandled exception); `error_message` field contains details |
+| `VALIDATION` | Em Validação | Awaiting administrator approval — applies to **CSV manual uploads only** |
+| `REJECTED` | Rejeitado | Rejected by an administrator; `rejection_reason` field contains the justification |
+
+#### Status Transitions
+
+**CycloneDX JSON / RAUC / EXT4 uploads:**
+
+```
+UPLOAD ──► PENDING ──► PROCESSING ──► COMPLETED
+                                  └──► FAILED
+```
+
+**CSV manual uploads:**
+
+```
+UPLOAD ──► VALIDATION ──► [Admin Approve] ──► PENDING ──► PROCESSING ──► COMPLETED
+                      └──► [Admin Reject]  ──► REJECTED               └──► FAILED
+```
+
+> A `COMPLETED` upload automatically triggers the Grype vulnerability scan chain (`run_grype_scan` → `run_ingestion`).  
+> `FAILED` records are retained for audit; the `error_message` field describes the failure reason.
+
+---
+
+### Vulnerability Status (`Vulnerability.status`)
+
+| Status | Description |
+|--------|-------------|
+| `OPEN` | Default — vulnerability is active and unresolved |
+| `RESOLVED` | Remediated (e.g., component updated to a patched version) |
+| `ACCEPTED` | Risk accepted; no fix will be applied |
+
+---
+
+### VEX Statement Status (CISA-compliant)
+
+VEX statements track exploitability per vulnerability, following the [CISA Minimum Requirements for VEX](https://www.cisa.gov/sites/default/files/2023-04/minimum-requirements-for-vex-508c.pdf). Each statement is auto-versioned on every update (`statement_version`, `doc_version`) and exported in CycloneDX 1.5 format via the CRA export endpoint.
+
+| Status | Description | Required fields |
+|--------|-------------|-----------------|
+| `under_investigation` | Under Investigation | — |
+| `affected` | Affected — product is vulnerable | `action_statement` (mandatory) |
+| `not_affected` | Not Affected | `justification` **or** `impact_statement` (at least one mandatory) |
+| `fixed` | Vulnerability has been fixed | — |
+
+#### VEX Justifications (when status is `not_affected`)
+
+| Justification | Description |
+|---------------|-------------|
+| `component_not_present` | Component Not Present |
+| `vulnerable_code_not_present` | Vulnerable Code Not Present |
+| `vulnerable_code_not_in_execute_path` | Vulnerable Code Not in Execute Path |
+| `vulnerable_code_cannot_be_controlled_by_adversary` | Vulnerable Code Cannot Be Controlled by Adversary |
+| `inline_mitigations_already_exist` | Inline Mitigations Already Exist |
+
+---
+
 ## Installation
 
 **Requirements:** Docker ≥ 24, Docker Compose ≥ 2.20, 4 GB RAM, 20 GB disk.

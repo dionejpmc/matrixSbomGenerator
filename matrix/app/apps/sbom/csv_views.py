@@ -126,9 +126,11 @@ def api_save_manual_sbom(request):
         components = data.get('components', [])
 
         if not product_name:
-            return JsonResponse({'error': 'Nome do produto obrigatório'}, status=400)
+            return JsonResponse({'error': 'Product Name required'}, status=400)
+        if not product_version:
+            return JsonResponse({'error': 'Product Version required'}, status=400)
         if not components:
-            return JsonResponse({'error': 'Nenhum componente informado'}, status=400)
+            return JsonResponse({'error': 'No components fund in the list'}, status=400)
 
         membership = UserBUMembership.objects.filter(user=request.user).first()
         user_bu = membership.business_unit if membership else None

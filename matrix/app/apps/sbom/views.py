@@ -745,7 +745,9 @@ def api_components(request, product_id):
 def api_bu_stats(request):
     membership = UserBUMembership.objects.filter(user=request.user).first()
     if not membership:
-        return JsonResponse({'sboms': 0, 'total_vulns': 0, 'resolved_vulns': 0})
+        return JsonResponse({'sboms': 0, 'total_vulns': 0, 'resolved_vulns': 0,
+                            'critical_exploit': 0, 'no_vex': 0,
+                            'by_severity': {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}})
 
     user_bu = membership.business_unit
 
@@ -760,11 +762,136 @@ def api_bu_stats(request):
         component__product__active=True,
     )
 
+    # CVEs críticos com exploit conhecido
+    critical_exploit = vulns.filter(
+        severity='CRITICAL',
+        known_exploited=True,
+    ).count()
+
+    # Vulnerabilidades sem declaração VEX
+    from apps.sbom.models import VexStatement
+    vulns_with_vex = VexStatement.objects.filter(
+        vulnerability__component__product__business_unit=user_bu,
+        vulnerability__component__product__active=True,
+    ).values_list('vulnerability_id', flat=True).distinct()
+
+    no_vex = vulns.exclude(id__in=vulns_with_vex).count()
+
+    # Distribuição por severidade
+    from django.db.models import Count
+    severity_counts = vulns.values('severity').annotate(total=Count('id'))
+    by_severity = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'UNKNOWN': 0}
+    for item in severity_counts:
+        sev = item['severity'].upper()
+        if sev in by_severity:
+            by_severity[sev] = item['total']
+
     return JsonResponse({
         'sboms': sboms,
         'total_vulns': vulns.count(),
         'resolved_vulns': vulns.filter(status__in=['RESOLVED', 'ACCEPTED']).count(),
+        'critical_exploit': critical_exploit,
+        'no_vex': no_vex,
+        'by_severity': by_severity,
     })
+
+
+@login_required
+def api_vulns_no_vex(request):
+    """Lista vulnerabilidades sem VEX declaration — paginada, com filtro por severidade."""
+    membership = UserBUMembership.objects.filter(user=request.user).first()
+    if not membership:
+        return JsonResponse({'vulns': [], 'total': 0})
+
+    user_bu = membership.business_unit
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 20))
+    severity_filter = request.GET.get('severity', '')  # ex: CRITICAL,HIGH
+
+    from apps.sbom.models import VexStatement
+    from django.db.models import Case, When, Value, IntegerField
+
+    vulns_with_vex = VexStatement.objects.filter(
+        vulnerability__component__product__business_unit=user_bu,
+    ).values_list('vulnerability_id', flat=True).distinct()
+
+    vulns = Vulnerability.objects.filter(
+        component__product__business_unit=user_bu,
+        component__product__active=True,
+    ).exclude(id__in=vulns_with_vex).select_related('component', 'component__product')
+
+    # Filtro por severidade
+    if severity_filter:
+        severities = [s.strip().upper() for s in severity_filter.split(',') if s.strip()]
+        if severities:
+            vulns = vulns.filter(severity__in=severities)
+
+    # Ordena por severidade (CRITICAL > HIGH > MEDIUM > LOW > UNKNOWN) e CVSS desc
+    vulns = vulns.annotate(
+        sev_order=Case(
+            When(severity='CRITICAL', then=Value(0)),
+            When(severity='HIGH',     then=Value(1)),
+            When(severity='MEDIUM',   then=Value(2)),
+            When(severity='LOW',      then=Value(3)),
+            default=Value(4),
+            output_field=IntegerField(),
+        )
+    ).order_by('sev_order', '-cvss_score')
+
+    total = vulns.count()
+    start = (page - 1) * page_size
+    vulns_page = vulns[start:start + page_size]
+
+    result = [{
+        'id': v.id,
+        'cve_id': v.cve_id,
+        'severity': v.severity,
+        'cvss_score': v.cvss_score,
+        'epss_score': v.epss_score,
+        'known_exploited': v.known_exploited,
+        'component': v.component.name,
+        'component_version': v.component.version,
+        'product': v.component.product.name,
+    } for v in vulns_page]
+
+    return JsonResponse({'vulns': result, 'total': total, 'page': page, 'page_size': page_size})
+
+
+@login_required
+def api_vulns_critical_exploit(request):
+    """Lista CVEs críticos com exploit conhecido — paginada."""
+    membership = UserBUMembership.objects.filter(user=request.user).first()
+    if not membership:
+        return JsonResponse({'vulns': [], 'total': 0})
+
+    user_bu = membership.business_unit
+    page = int(request.GET.get('page', 1))
+    page_size = int(request.GET.get('page_size', 20))
+
+    vulns = Vulnerability.objects.filter(
+        component__product__business_unit=user_bu,
+        component__product__active=True,
+        severity='CRITICAL',
+        known_exploited=True,
+    ).select_related('component', 'component__product').order_by('-cvss_score', '-epss_score')
+
+    total = vulns.count()
+    start = (page - 1) * page_size
+    vulns_page = vulns[start:start + page_size]
+
+    result = [{
+        'id': v.id,
+        'cve_id': v.cve_id,
+        'severity': v.severity,
+        'cvss_score': v.cvss_score,
+        'epss_score': v.epss_score,
+        'known_ransomware': v.known_ransomware,
+        'component': v.component.name,
+        'component_version': v.component.version,
+        'product': v.component.product.name,
+    } for v in vulns_page]
+
+    return JsonResponse({'vulns': result, 'total': total, 'page': page, 'page_size': page_size})
 
 
 @login_required
