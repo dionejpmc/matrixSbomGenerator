@@ -972,3 +972,291 @@ msgstr ""
 
 msgid "versão"
 msgstr ""
+
+
+# --- Scanner de codigo-fonte / bulk edit / duplicidade (adicionado) ---
+msgid "(sem nome)"
+msgstr "(sem nome)"
+
+msgid "Adicionar arquivos"
+msgstr "Adicionar arquivos"
+
+msgid "Adicionar pasta"
+msgstr "Adicionar pasta"
+
+msgid "Ainda há linhas duplicadas não resolvidas. Elas serão salvas como componentes separados. Deseja continuar mesmo assim?"
+msgstr "Ainda há linhas duplicadas não resolvidas. Elas serão salvas como componentes separados. Deseja continuar mesmo assim?"
+
+msgid "Autor"
+msgstr "Autor"
+
+msgid "Caminho base (opcional)"
+msgstr "Caminho base (opcional)"
+
+msgid "Componentes raw"
+msgstr "Componentes raw"
+
+msgid "Criar SBOM a partir de arquivos e pastas"
+msgstr "Criar SBOM a partir de arquivos e pastas"
+
+msgid "Defina ao menos uma extensão de arquivo antes de escanear."
+msgstr "Defina ao menos uma extensão de arquivo antes de escanear."
+
+msgid "Depende de"
+msgstr "Depende de"
+
+msgid "Envie a pasta do firmware: os cabeçalhos dos arquivos são lidos e os componentes (nome, versão, PURL, CPE, autor, licença, dependências) são pré-preenchidos para revisão. Repita quantas vezes precisar — cada seleção adiciona ao mesmo SBOM."
+msgstr "Envie a pasta do firmware: os cabeçalhos dos arquivos são lidos e os componentes (nome, versão, PURL, CPE, autor, licença, dependências) são pré-preenchidos para revisão. Repita quantas vezes precisar — cada seleção adiciona ao mesmo SBOM."
+
+msgid "Erro ao enviar arquivos para o scanner."
+msgstr "Erro ao enviar arquivos para o scanner."
+
+msgid "Erro ao escanear arquivos."
+msgstr "Erro ao escanear arquivos."
+
+msgid "Escaneando arquivos..."
+msgstr "Escaneando arquivos..."
+
+msgid "Escaneando..."
+msgstr "Escaneando..."
+
+msgid "Escanear mais arquivos"
+msgstr "Escanear mais arquivos"
+
+msgid "Escanear pastas e arquivos"
+msgstr "Escanear pastas e arquivos"
+
+msgid "Extensões a escanear"
+msgstr "Extensões a escanear"
+
+msgid "Fornecedor"
+msgstr "Fornecedor"
+
+msgid "Mostra apenas componentes e suas dependências, sem vulnerabilidades"
+msgstr "Mostra apenas componentes e suas dependências, sem vulnerabilidades"
+
+msgid "Navegadores não expõem o caminho absoluto; informe-o para compor a coluna de pasta."
+msgstr "Navegadores não expõem o caminho absoluto; informe-o para compor a coluna de pasta."
+
+msgid "Nenhum arquivo novo: todos foram filtrados pela extensão ou já escaneados."
+msgstr "Nenhum arquivo novo: todos foram filtrados pela extensão ou já escaneados."
+
+msgid "Nenhum arquivo selecionado."
+msgstr "Nenhum arquivo selecionado."
+
+msgid "Nenhum componente detectado. Escaneie mais arquivos ou clique em \"+ Adicionar linha\"."
+msgstr "Nenhum componente detectado. Escaneie mais arquivos ou clique em \"+ Adicionar linha\"."
+
+msgid "Nome repetido em caminhos diferentes — decida qual manter"
+msgstr "Nome repetido em caminhos diferentes — decida qual manter"
+
+msgid "Origem"
+msgstr "Origem"
+
+msgid "Passo 1 — Informar produto e escanear os arquivos"
+msgstr "Passo 1 — Informar produto e escanear os arquivos"
+
+msgid "Passo 2 — Revisar e completar os componentes detectados"
+msgstr "Passo 2 — Revisar e completar os componentes detectados"
+
+msgid "Pasta"
+msgstr "Pasta"
+
+msgid "Preencher em massa"
+msgstr "Preencher em massa"
+
+msgid "Preencher manualmente"
+msgstr "Preencher manualmente"
+
+msgid "Recomendado"
+msgstr "Recomendado"
+
+msgid "Scan de Arquivo/Diretorio"
+msgstr "Scan de Arquivo/Diretorio"
+
+msgid "Selecionar linhas sem autor"
+msgstr "Selecionar linhas sem autor"
+
+msgid "Selecionar linhas sem fornecedor"
+msgstr "Selecionar linhas sem fornecedor"
+
+msgid "Selecionar linhas sem versão"
+msgstr "Selecionar linhas sem versão"
+
+msgid "Selecionar todos"
+msgstr "Selecionar todos"
+
+msgid "Somente arquivos com estas extensões são enviados e escaneados."
+msgstr "Somente arquivos com estas extensões são enviados e escaneados."
+
+msgid "Ver componentes escaneados"
+msgstr "Ver componentes escaneados"
+
+msgid "Ver tabela"
+msgstr "Ver tabela"
+
+msgid "aplicar"
+msgstr "aplicar"
+
+msgid "arquivos escaneados"
+msgstr "arquivos escaneados"
+
+msgid "autor"
+msgstr "autor"
+
+msgid "campos pendentes destacados em âmbar"
+msgstr "campos pendentes destacados em âmbar"
+
+msgid "componente(s) já escaneado(s) — escaneie mais pastas para somar, ou volte à tabela para revisar."
+msgstr "componente(s) já escaneado(s) — escaneie mais pastas para somar, ou volte à tabela para revisar."
+
+msgid "dependências"
+msgstr "dependências"
+
+msgid "descrição"
+msgstr "descrição"
+
+msgid "dup"
+msgstr "dup"
+
+msgid "fornecedor"
+msgstr "fornecedor"
+
+msgid "já tinha valor (mantido)"
+msgstr "já tinha valor (mantido)"
+
+msgid "limpar seleção"
+msgstr "limpar seleção"
+
+msgid "linha(s) duplicada(s) — decida qual manter"
+msgstr "linha(s) duplicada(s) — decida qual manter"
+
+msgid "manual"
+msgstr "manual"
+
+msgid "pasta"
+msgstr "pasta"
+
+msgid "pendente"
+msgstr "pendente"
+
+msgid "preenchido(s)"
+msgstr "preenchido(s)"
+
+msgid "scan"
+msgstr "scan"
+
+msgid "selecionado(s)"
+msgstr "selecionado(s)"
+
+
+# --- Textos soltos HTML (adicionado) ---
+msgid "Distribuição por Severidade"
+msgstr "Distribuição por Severidade"
+
+msgid "Sem dados de vulnerabilidade."
+msgstr "Sem dados de vulnerabilidade."
+
+msgid "Comparar Versões"
+msgstr "Comparar Versões"
+
+msgid "Detalhes da Vulnerabilidade"
+msgstr "Detalhes da Vulnerabilidade"
+
+msgid "Compare qualquer SBOM da sua BU"
+msgstr "Compare qualquer SBOM da sua BU"
+
+msgid "SBOM para Comparar"
+msgstr "SBOM para Comparar"
+
+msgid "CVEs Novos"
+msgstr "CVEs Novos"
+
+msgid "Nenhum componente adicionado."
+msgstr "Nenhum componente adicionado."
+
+msgid "Nenhum componente removido."
+msgstr "Nenhum componente removido."
+
+msgid "Nenhum componente atualizado."
+msgstr "Nenhum componente atualizado."
+
+msgid "Nenhum CVE novo."
+msgstr "Nenhum CVE novo."
+
+msgid "Nenhum CVE resolvido."
+msgstr "Nenhum CVE resolvido."
+
+msgid "Selecione duas versões e clique em Comparar"
+msgstr "Selecione duas versões e clique em Comparar"
+
+
+# --- Strings JS visíveis (adicionado) ---
+msgid "Nenhum resultado para este filtro."
+msgstr "Nenhum resultado para este filtro."
+
+msgid "Erro na requisição."
+msgstr "Erro na requisição."
+
+msgid "Nome do produto obrigatório."
+msgstr "Nome do produto obrigatório."
+
+
+# --- Interface + severidades exibidas (adicionado) ---
+msgid "Sem VEX"
+msgstr "Sem VEX"
+
+msgid "Diff entre SBOMs"
+msgstr "Diff entre SBOMs"
+
+msgid "Severidade"
+msgstr "Severidade"
+
+msgid "Adicionados"
+msgstr "Adicionados"
+
+msgid "Removidos"
+msgstr "Removidos"
+
+msgid "Atualizados"
+msgstr "Atualizados"
+
+msgid "CVEs Resolvidos"
+msgstr "CVEs Resolvidos"
+
+msgid "Resolvido"
+msgstr "Resolvido"
+
+msgid "SBOM Base"
+msgstr "SBOM Base"
+
+msgid "Selecione..."
+msgstr "Selecione..."
+
+msgid "prob. 30d"
+msgstr "prob. 30d"
+
+msgid "Exploit"
+msgstr "Exploit"
+
+msgid "Scan de Firmware"
+msgstr "Scan de Firmware"
+
+msgid "Critical"
+msgstr "Crítico"
+
+msgid "High"
+msgstr "Alto"
+
+msgid "Medium"
+msgstr "Médio"
+
+msgid "Low"
+msgstr "Baixo"
+
+msgid "Negligible"
+msgstr "Insignificante"
+
+msgid "Unknown"
+msgstr "Desconhecido"
+

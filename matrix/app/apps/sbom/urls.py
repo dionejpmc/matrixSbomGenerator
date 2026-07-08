@@ -7,6 +7,7 @@ from .csv_views import (
     download_csv_template, api_parse_csv, api_save_manual_sbom,
     approval_view, api_approval_list, api_approve_sbom, api_reject_sbom,
 )
+from . import views, scan_source
 
 app_name = 'sbom'
 
@@ -26,10 +27,10 @@ urlpatterns = [
     path('api/vex/export/<int:product_id>/',         api_vex_export,  name='vex_export'),
     path('api/scan-status/<int:product_id>/', api_scan_status, name='scan_status'),
     # CSV manual upload
-    path('csv/template/',            download_csv_template,  name='csv_template'),
-    path('api/csv/parse/',           api_parse_csv,          name='csv_parse'),
-    path('api/csv/save/',            api_save_manual_sbom,   name='csv_save'),
- 
+    path('csv/template/',            download_csv_template,  name='csv_template'), ##Codigo morto
+    path('api/csv/parse/',           api_parse_csv,          name='csv_parse'), ##Codigo morto
+    path('api/csv/save/',            api_save_manual_sbom,   name='csv_save'), ##Codigo morto
+  
     # SBOM Diff
     path('api/diff/uploads/<int:product_id>/', api_diff_uploads, name='diff_uploads'),
     path('api/diff/', api_sbom_diff, name='sbom_diff'),
@@ -38,4 +39,5 @@ urlpatterns = [
     path('api/approval/',            api_approval_list,      name='approval_list'),
     path('api/approval/<uuid:upload_id>/approve/', api_approve_sbom, name='approval_approve'),
     path('api/approval/<uuid:upload_id>/reject/',  api_reject_sbom,  name='approval_reject'),
+     path("api/scan/source/", scan_source.api_scan_source, name="api_scan_source"),
 ]

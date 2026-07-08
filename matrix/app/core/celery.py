@@ -14,6 +14,7 @@ app.conf.include = [
     'tasks.rauc_tasks',
     'tasks.ext4_tasks',
     'tasks.scheduled_tasks',
+    'tasks.scan_source_tasks',
 ]
 
 app.conf.beat_schedule = {

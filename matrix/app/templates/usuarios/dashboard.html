@@ -6,9 +6,139 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <title>{% trans "Matrix SBOM Manager | Dashboard" %}</title>
+    <title> {{ APP_NAME }} {% trans "SBOM Manager | Dashboard" %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- SCRIPT DO MENU DE FEEDBACK-->
+    <script>
+    function feedbackWidget() {
+        return {
+            open: false,
+            tab: 'send',
+            isAdmin: {{ is_admin_js|default:"false" }},   {# defina no contexto da view, ou use o bloco abaixo #}
+            badge: 0,
+            openCount: 0,
+            error: '', sent: false, sending: false,
+            form: { type: 'question', subject: '', description: '' },
+            mine: [],
+            all: [],
+            filterStatus: '', filterType: '',
+            types: [
+                { value: 'question',    label: '{% trans "Dúvida" %}' },
+                { value: 'improvement', label: '{% trans "Melhoria" %}' },
+                { value: 'problem',     label: '{% trans "Problema" %}' },
+            ],
+            statuses: [
+                { value: 'open',        label: '{% trans "Aberto" %}' },
+                { value: 'answered',    label: '{% trans "Respondido" %}' },
+                { value: 'analyzing',   label: '{% trans "Em análise" %}' },
+                { value: 'planned',     label: '{% trans "Planejado" %}' },
+                { value: 'backlog',     label: '{% trans "Backlog" %}' },
+                { value: 'implemented', label: '{% trans "Implementado" %}' },
+                { value: 'rejected',    label: '{% trans "Rejeitado" %}' },
+                { value: 'duplicate',   label: '{% trans "Duplicado" %}' },
+            ],
+    
+            csrf() {
+                return document.querySelector('[name=csrfmiddlewaretoken]')?.value
+                    || document.querySelector('meta[name=csrf-token]')?.content || '';
+            },
+    
+            statusClass(s) {
+                return {
+                    'bg-slate-600/30 text-slate-300': s === 'open',
+                    'bg-sky-500/20 text-sky-300': s === 'answered',
+                    'bg-amber-500/20 text-amber-300': s === 'analyzing',
+                    'bg-indigo-500/20 text-indigo-300': s === 'planned',
+                    'bg-slate-500/20 text-slate-300': s === 'backlog',
+                    'bg-emerald-500/20 text-emerald-300': s === 'implemented',
+                    'bg-red-500/20 text-red-300': s === 'rejected',
+                    'bg-purple-500/20 text-purple-300': s === 'duplicate',
+                };
+            },
+    
+            async loadBadge() {
+                try {
+                    const r = await fetch('/feedback/api/badge/');
+                    const d = await r.json();
+                    this.badge = d.count || 0;
+                    this.isAdmin = d.role === 'admin';
+                } catch (e) {}
+            },
+    
+            openModal() {
+                this.open = true;
+                this.error = ''; this.sent = false;
+                if (this.isAdmin) { this.tab = 'admin'; this.loadAll(); }
+                else { this.tab = 'send'; }
+            },
+    
+            async submit() {
+                this.error = ''; this.sent = false;
+                if (!this.form.subject.trim())     { this.error = '{% trans "Informe um assunto." %}'; return; }
+                if (!this.form.description.trim())  { this.error = '{% trans "Descreva o feedback." %}'; return; }
+                this.sending = true;
+                try {
+                    const r = await fetch('/feedback/api/create/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrf() },
+                        body: JSON.stringify(this.form),
+                    });
+                    const d = await r.json();
+                    if (r.ok) {
+                        this.sent = true;
+                        this.form = { type: 'question', subject: '', description: '' };
+                    } else {
+                        this.error = d.error || '{% trans "Erro ao enviar." %}';
+                    }
+                } catch (e) { this.error = '{% trans "Erro de conexão." %}'; }
+                finally { this.sending = false; }
+            },
+    
+            async loadMine() {
+                try {
+                    const r = await fetch('/feedback/api/mine/');
+                    const d = await r.json();
+                    this.mine = d.feedbacks || [];
+                    // marca respostas como vistas ao abrir a aba (zera o badge)
+                    if (d.unseen > 0) {
+                        await fetch('/feedback/api/mark-seen/', {
+                            method: 'POST', headers: { 'X-CSRFToken': this.csrf() },
+                        });
+                        this.badge = 0;
+                    }
+                } catch (e) {}
+            },
+    
+            async loadAll() {
+                try {
+                    const params = new URLSearchParams();
+                    if (this.filterStatus) params.set('status', this.filterStatus);
+                    if (this.filterType) params.set('type', this.filterType);
+                    const r = await fetch('/feedback/api/all/?' + params.toString());
+                    const d = await r.json();
+                    this.all = (d.feedbacks || []).map(fb => ({
+                        ...fb, _newStatus: fb.status, _newAnswer: fb.answer || '',
+                    }));
+                    this.openCount = d.open_count || 0;
+                    this.badge = d.open_count || 0;
+                } catch (e) {}
+            },
+    
+            async respond(fb) {
+                try {
+                    const r = await fetch(`/feedback/api/${fb.id}/respond/`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrf() },
+                        body: JSON.stringify({ status: fb._newStatus, answer: fb._newAnswer }),
+                    });
+                    if (r.ok) { await this.loadAll(); }
+                } catch (e) {}
+            },
+        };
+    }
+    </script>
     <script>
     document.addEventListener('alpine:init', () => {
         Alpine.data('dashboardApp', () => ({
@@ -47,6 +177,17 @@
             components: [],
             error: '',
             saving: false,
+            // scanner de código-fonte
+            extensions: ['.c', '.h'],
+            extInput: '',
+            basePath: '',
+            scanning: false,
+            scannedFiles: 0,
+            seenKeys: [],
+            progress: null,   // {total, done, currentFolder, batchIndex, batchCount, etaSeconds, cancel}
+            // preenchimento em massa (bulk edit) — só preenche vazios
+            bulk: { version: '', author: '', supplier: '' },
+            bulkFeedback: null,
         },
         uploadModal: { 
             open: false, 
@@ -745,57 +886,300 @@
             open: true, step: 'form',
             productName: '', productVersion: '',
             components: [], error: '', saving: false,
+            extensions: ['.c', '.h'], extInput: '', basePath: '',
+            scanning: false, scannedFiles: 0, seenKeys: [], progress: null,
+            bulk: { version: '', author: '', supplier: '' },
+            bulkFeedback: null,
         };
     },
 
-    async parseCsv(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        this.csvModal.error = '';
-        const formData = new FormData();
-        formData.append('csv_file', file);
-        const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-        try {
-            const res = await fetch('/sbom/api/csv/parse/', {
-                method: 'POST',
-                headers: { 'X-CSRFToken': csrf },
-                body: formData,
-            });
-            const data = await res.json();
-            if (res.ok) {
-                this.csvModal.components = data.components;
-                this.csvModal.step = 'preview';
-            } else {
-                this.csvModal.error = data.error || 'Erro ao processar CSV.';
-            }
-        } catch(e) {
-            this.csvModal.error = 'Erro ao enviar arquivo.';
+    // ── Scanner de código-fonte ─────────────────────────────────────
+    csrfToken() {
+        // Prioriza o cookie 'csrftoken' — é o valor que o Django valida e fica
+        // sempre atualizado, mesmo se o token rotacionar durante um scan longo
+        // (muitos lotes sequenciais). Cai para o input/meta se o cookie faltar.
+        const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+        if (m) return decodeURIComponent(m[1]);
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value
+            || document.querySelector('meta[name=csrf-token]')?.content || '';
+    },
+
+    normalizeExt(raw) {
+        let e = raw.trim().toLowerCase().replace(/^\*+/, '');
+        if (!e) return null;
+        if (!e.startsWith('.')) e = '.' + e;
+        return /^\.[a-z0-9_+\-]+$/.test(e) ? e : null;
+    },
+
+    addExtsFromInput() {
+        for (const piece of this.csvModal.extInput.split(/[,\s]+/)) {
+            const ext = this.normalizeExt(piece);
+            if (ext && !this.csvModal.extensions.includes(ext)) this.csvModal.extensions.push(ext);
         }
+        this.csvModal.extInput = '';
+    },
+
+    removeExt(ext) {
+        this.csvModal.extensions = this.csvModal.extensions.filter(e => e !== ext);
+    },
+
+    extAllowed(name) {
+        const dot = name.lastIndexOf('.');
+        if (dot < 0) return false;
+        return this.csvModal.extensions.includes(name.slice(dot).toLowerCase());
+    },
+
+    componentKey(c) {
+        // Arquivos são únicos por caminho (dois "ADC.c" em pastas diferentes
+        // devem coexistir para o analista decidir). O nome inclui a extensão,
+        // então ADC.c e ADC.h são arquivos distintos, nunca duplicados entre si.
+        // Libs de terceiros continuam deduplicando por nome+versão.
+        if (c.type === 'file') {
+            return 'file::' + (c.folder || '').toLowerCase() + '::' + (c.name || '').toLowerCase();
+        }
+        return (c.name || '').toLowerCase() + '@' + (c.version || '');
+    },
+
+    // Recalcula a marca de duplicidade no conjunto acumulado (funciona mesmo
+    // quando os homônimos vêm de scans separados). Duplicado = mesmo nome de
+    // arquivo COM extensão (ex.: dois ADC.c) em caminhos diferentes. ADC.c e
+    // ADC.h NÃO são duplicados (nomes diferentes).
+    recomputeDuplicates() {
+        const counts = {};
+        for (const c of this.csvModal.components) {
+            if (c.type !== 'file') continue;
+            const n = (c.name || '').toLowerCase();
+            counts[n] = (counts[n] || 0) + 1;
+        }
+        for (const c of this.csvModal.components) {
+            if (c.type === 'file' && counts[(c.name || '').toLowerCase()] > 1) {
+                c.duplicate = true;
+                c.duplicate_group = c.name;
+            } else {
+                c.duplicate = false;
+                c.duplicate_group = '';
+            }
+        }
+    },
+
+    async scanSourceFiles(event) {
+        const all = [...event.target.files];
+        event.target.value = '';
+        if (!all.length) return;
+        if (!this.csvModal.extensions.length) {
+            this.csvModal.error = '{% trans "Defina ao menos uma extensão de arquivo antes de escanear." %}';
+            return;
+        }
+        this.csvModal.error = '';
+
+        const files = all.filter(f => {
+            if (!this.extAllowed(f.name)) return false;
+            const key = (this.csvModal.basePath || '') + '::' + (f.webkitRelativePath || f.name);
+            if (this.csvModal.seenKeys.includes(key)) return false;
+            this.csvModal.seenKeys.push(key);
+            return true;
+        });
+        const skipped = all.length - files.length;
+        if (!files.length) {
+            this.csvModal.error = skipped
+                ? '{% trans "Nenhum arquivo novo: todos foram filtrados pela extensão ou já escaneados." %}'
+                : '{% trans "Nenhum arquivo selecionado." %}';
+            return;
+        }
+
+        // Conta e avisa antes de processar volumes grandes, para o usuário ter
+        // a dimensão do trabalho (e poder desistir).
+        if (files.length > 500) {
+            const msg = files.length.toLocaleString()
+                + ' {% trans "arquivos serão analisados. O processamento é feito pasta por pasta e pode levar algum tempo. Deseja continuar?" %}';
+            if (!window.confirm(msg)) return;
+        }
+
+        // ── Agrupa por pasta e subdivide em lotes de no máx. 50 arquivos. ──
+        // Enviar tudo de uma vez estoura DATA_UPLOAD_MAX_NUMBER_FILES; então
+        // processamos pasta por pasta, sequencialmente, acumulando o resultado.
+        const BATCH_SIZE = 50;
+        const folderOf = (f) => {
+            const p = f.webkitRelativePath || f.name;
+            const i = p.lastIndexOf('/');
+            return i >= 0 ? p.slice(0, i) : '(raiz)';
+        };
+        const byFolder = {};
+        for (const f of files) {
+            const k = folderOf(f);
+            (byFolder[k] = byFolder[k] || []).push(f);
+        }
+        // monta a fila de lotes: [{folder, files[]}], cada um com <= BATCH_SIZE
+        const batches = [];
+        for (const folder of Object.keys(byFolder).sort()) {
+            const group = byFolder[folder];
+            for (let i = 0; i < group.length; i += BATCH_SIZE) {
+                batches.push({ folder, files: group.slice(i, i + BATCH_SIZE) });
+            }
+        }
+
+        // estado de progresso
+        this.csvModal.scanning = true;
+        this.csvModal.progress = {
+            total: files.length,
+            done: 0,
+            folders: Object.keys(byFolder).length,
+            currentFolder: '',
+            batchIndex: 0,
+            batchCount: batches.length,
+            startedAt: Date.now(),
+            etaSeconds: null,
+            cancel: false,
+        };
+        this.csvModal.step = 'preview';   // já mostra a tela (com a barra)
+
+        const existing = new Set(this.csvModal.components.map(c => this.componentKey(c)));
+        let hadError = false;
+
+        for (let b = 0; b < batches.length; b++) {
+            if (this.csvModal.progress.cancel) break;
+            const batch = batches[b];
+            this.csvModal.progress.currentFolder = batch.folder;
+            this.csvModal.progress.batchIndex = b + 1;
+
+            const fd = new FormData();
+            fd.append('csrfmiddlewaretoken', this.csrfToken());
+            fd.append('base_path', this.csvModal.basePath.trim());
+            for (const f of batch.files) {
+                fd.append('files', f, f.name);
+                fd.append('paths', f.webkitRelativePath || f.name);
+            }
+
+            try {
+                const res = await fetch('/sbom/api/scan/source/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': this.csrfToken() },
+                    body: fd,
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    for (const comp of (data.components || [])) {
+                        const key = this.componentKey(comp);
+                        if (existing.has(key)) continue;
+                        existing.add(key);
+                        this.csvModal.components.push({ ...comp, origin: comp.origin || 'auto' });
+                    }
+                } else {
+                    hadError = true;
+                    this.csvModal.error = data.error || '{% trans "Erro ao escanear arquivos." %}';
+                }
+            } catch (e) {
+                hadError = true;
+                this.csvModal.error = '{% trans "Erro ao enviar arquivos para o scanner." %}';
+            }
+
+            // progresso + estimativa de tempo restante
+            this.csvModal.progress.done += batch.files.length;
+            const elapsed = (Date.now() - this.csvModal.progress.startedAt) / 1000;
+            const done = this.csvModal.progress.done;
+            if (done > 0) {
+                const perFile = elapsed / done;
+                const remaining = this.csvModal.progress.total - done;
+                this.csvModal.progress.etaSeconds = Math.max(0, Math.round(perFile * remaining));
+            }
+            this.csvModal.scannedFiles += batch.files.length;
+        }
+
+        // recalcula duplicidade sobre o conjunto acumulado inteiro
+        this.clearSelection();
+        this.recomputeDuplicates();
+
+        const canceled = this.csvModal.progress.cancel;
+        this.csvModal.scanning = false;
+        this.csvModal.progress = null;
+        if (canceled && !this.csvModal.components.length) {
+            this.csvModal.step = 'form';
+        }
+    },
+
+    cancelScan() {
+        if (this.csvModal.progress) this.csvModal.progress.cancel = true;
     },
 
     addCsvRow() {
         this.csvModal.components.push({
-            row: this.csvModal.components.length + 1,
+            origin: 'manual', _sel: false,
             name: '', version: '', type: 'library', purl: '', cpe: '',
+            supplier: '', license: '', copyright: '', scope: '',
+            author: '', description: '', depends: '', folder: '',
         });
     },
 
     removeCsvRow(index) {
         this.csvModal.components.splice(index, 1);
+        this.recomputeDuplicates();
+    },
+
+    // ── Seleção e preenchimento em massa (bulk) ─────────────────────
+    selectedCount() {
+        return this.csvModal.components.filter(c => c._sel).length;
+    },
+
+    allSelected() {
+        const rows = this.csvModal.components;
+        return rows.length > 0 && rows.every(c => c._sel);
+    },
+
+    toggleSelectAll(ev) {
+        const val = ev.target.checked;
+        this.csvModal.components.forEach(c => { c._sel = val; });
+    },
+
+    clearSelection() {
+        this.csvModal.components.forEach(c => { c._sel = false; });
+    },
+
+    // seleciona apenas as linhas cujo campo indicado está vazio
+    selectEmptyFor(field) {
+        this.csvModal.components.forEach(c => {
+            c._sel = !((c[field] || '').toString().trim());
+        });
+    },
+
+    // aplica o valor do bulk[field] às linhas SELECIONADAS que estão VAZIAS
+    // naquele campo. Nunca sobrescreve valores já preenchidos.
+    applyBulk(field) {
+        const value = (this.csvModal.bulk[field] || '').trim();
+        if (!value) return;
+        let applied = 0, skipped = 0;
+        for (const c of this.csvModal.components) {
+            if (!c._sel) continue;
+            const current = (c[field] || '').toString().trim();
+            if (current) { skipped++; continue; }   // já preenchido: respeita
+            c[field] = value;
+            applied++;
+        }
+        // recalcula duplicidade se mexeu em versão (afeta a chave visual)
+        if (field === 'version') this.recomputeDuplicates();
+        this.csvModal.bulkFeedback = { field, applied, skipped };
+        setTimeout(() => { this.csvModal.bulkFeedback = null; }, 4000);
     },
 
     async saveCsvSbom() {
         if (!this.csvModal.productName.trim()) {
-            this.csvModal.error = 'Nome do produto obrigatório.';
+            this.csvModal.error = '{% trans "Nome do produto obrigatório." %}';
             return;
         }
         if (!this.csvModal.components.length) {
             this.csvModal.error = 'Adicione pelo menos um componente.';
             return;
         }
+        // Duplicidades não resolvidas: pedir confirmação antes de prosseguir
+        const dups = this.csvModal.components.filter(c => c.duplicate).length;
+        if (dups > 0) {
+            const msg = '{% trans "Ainda há linhas duplicadas não resolvidas. Elas serão salvas como componentes separados. Deseja continuar mesmo assim?" %}';
+            if (!window.confirm(msg)) return;
+        }
         this.csvModal.saving = true;
         this.csvModal.error = '';
         const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+        // remove campos internos de revisão (não pertencem ao componente salvo)
+        const payload = this.csvModal.components.map(({ duplicate, duplicate_group, _sel, ...rest }) => rest);
         try {
             const res = await fetch('/sbom/api/csv/save/', {
                 method: 'POST',
@@ -803,7 +1187,7 @@
                 body: JSON.stringify({
                     product_name: this.csvModal.productName,
                     product_version: this.csvModal.productVersion,
-                    components: this.csvModal.components,
+                    components: payload,
                 }),
             });
             const data = await res.json();
@@ -887,6 +1271,15 @@
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
         .animate-blink { animation: blink 1s infinite; }
         [x-cloak] { display: none !important; }
+
+        /* Destaque de linha duplicada (nome repetido em caminhos diferentes) */
+        @keyframes dupPulse {
+            0%, 100% { background-color: rgba(239, 68, 68, 0.06); }
+            50%      { background-color: rgba(239, 68, 68, 0.16); }
+        }
+        .dup-row { animation: dupPulse 1.2s ease-in-out infinite; }
+        .dup-row td { border-top: 1px solid rgba(239, 68, 68, 0.35); border-bottom: 1px solid rgba(239, 68, 68, 0.35); }
+        .dup-badge { animation: blink 1.2s infinite; }
         
         /* Estilização da barra de rolagem para manter o clima futurista */
         ::-webkit-scrollbar { width: 8px; }
@@ -904,7 +1297,7 @@
     <header class="h-20 border-b border-slate-800 bg-slate-900/80 backdrop-blur-xl flex items-center justify-between px-12 sticky top-0 z-40">
         <div class="flex items-center space-x-12">
             <div class="flex flex-col">
-                <h1 class="text-2xl font-black text-white tracking-tighter italic">MATRIX</h1>
+                <h1 class="text-2xl font-black text-white tracking-tighter italic">{{ APP_NAME }}</h1>
                 <span class="text-[9px] text-blue-500 font-mono tracking-[0.3em] uppercase">SBOM Monitor and Security Intelligence</span>
             </div>
         </div>
@@ -944,9 +1337,11 @@
                         <i class="fas fa-crosshairs mr-3 text-cyan-500"></i> Vuln Hunting
                     </a>
                     {% endif %}
+                  
+
+ 
                     <div class="border-t border-slate-700 mt-4 pt-4 px-4">
-                        <form action="{% url 'logoff' %}" method="post" class="space-y-2">
-                            {% csrf_token %}
+                        <div class="space-y-2">
                             <div class="flex justify-center">
                                 <form action="{% url 'set_language' %}" method="post" class="flex items-center gap-1 bg-slate-700/50 border border-slate-600 rounded-xl p-1">
                                     {% csrf_token %}
@@ -957,7 +1352,7 @@
                                             class="text-[10px] font-mono px-3 py-1 rounded-lg transition {% if CURRENT_LANG == 'en' %}bg-slate-600 text-white{% else %}text-slate-400 hover:text-white{% endif %}">EN</button>
                                 </form>
                             </div>
-                        </form>
+                        </div>
                         <form action="{% url 'logoff' %}" method="post">
                             {% csrf_token %}
                             <button type="submit" class="w-full py-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white text-xs font-bold rounded-lg transition-all duration-200">
@@ -968,8 +1363,184 @@
                 </div>
             </div>
         </div>
+        
     </header>
+
+    <!-- INICIO DO MEU DE FEEDBACK-->
+    <div class="w-full flex justify-end pr-4">
+    <div x-data="feedbackWidget()" x-init="loadBadge()" class="relative inline-block">
+        <button @click="openModal()"
+                class="relative p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition"
+                :title="'{% trans "Feedback: dúvidas, melhorias e problemas" %}'">
+            <i class="fas fa-comment-dots text-slate-300"></i>
+            <span x-show="badge > 0" x-cloak
+                class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-black"
+                x-text="badge > 99 ? '99+' : badge"></span>
+        </button>
+    
+        {# ─── PARTE 2: MODAL ─── #}
+        <div x-show="open" x-cloak
+            class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            @click.self="open = false">
+            <div class="relative w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+                style="max-height: 88vh">
+    
+                <!-- Header + abas -->
+                <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+                            <i class="fas fa-comment-dots text-purple-400"></i>
+                        </div>
+                        <p class="text-white font-black">{% trans "Feedback" %}</p>
+                    </div>
+                    <div class="flex items-center gap-1 bg-slate-800 rounded-xl p-1">
+                        <button @click="tab = 'send'" :class="tab === 'send' ? 'bg-slate-700 text-white' : 'text-slate-400'"
+                                class="px-3 py-1.5 rounded-lg text-xs font-bold transition">{% trans "Enviar" %}</button>
+                        <button @click="tab = 'mine'; loadMine()" :class="tab === 'mine' ? 'bg-slate-700 text-white' : 'text-slate-400'"
+                                class="px-3 py-1.5 rounded-lg text-xs font-bold transition">{% trans "Meus feedbacks" %}</button>
+                        <template x-if="isAdmin">
+                            <button @click="tab = 'admin'; loadAll()" :class="tab === 'admin' ? 'bg-slate-700 text-white' : 'text-slate-400'"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold transition">
+                                {% trans "Triagem" %}
+                                <span x-show="openCount > 0" class="ml-1 px-1.5 rounded bg-red-500/30 text-red-300 text-[10px]" x-text="openCount"></span>
+                            </button>
+                        </template>
+                    </div>
+                    <button @click="open = false" class="p-2 rounded-xl bg-slate-800 hover:bg-red-500/20 border border-slate-700 transition">
+                        <i class="fas fa-times text-slate-400 text-xs"></i>
+                    </button>
+                </div>
+    
+                <!-- ABA ENVIAR -->
+                <div x-show="tab === 'send'" class="px-6 py-5 space-y-4 overflow-y-auto">
+                    <div>
+                        <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">{% trans "Tipo" %}</p>
+                        <div class="flex gap-2">
+                            <template x-for="t in types" :key="t.value">
+                                <button @click="form.type = t.value"
+                                        :class="form.type === t.value ? 'bg-purple-600 text-white border-purple-500' : 'bg-slate-800 text-slate-400 border-slate-700'"
+                                        class="px-4 py-2 rounded-xl text-xs font-bold border transition"
+                                        x-text="t.label"></button>
+                            </template>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">{% trans "Assunto" %}</p>
+                        <input type="text" x-model="form.subject" maxlength="200"
+                            class="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-purple-500/50"
+                            :placeholder="'{% trans "Resuma em uma linha" %}'">
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">{% trans "Descrição" %}</p>
+                        <textarea x-model="form.description" rows="5"
+                                class="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-purple-500/50 resize-none"
+                                :placeholder="'{% trans "Descreva sua dúvida, sugestão de melhoria ou o problema encontrado" %}'"></textarea>
+                    </div>
+                    <p x-show="error" class="text-[11px] text-red-400 font-mono" x-text="error"></p>
+                    <p x-show="sent" class="text-[11px] text-emerald-400"><i class="fas fa-check mr-1"></i>{% trans "Feedback enviado. Obrigado!" %}</p>
+                    <div class="flex justify-end">
+                        <button @click="submit()" :disabled="sending"
+                                class="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-sm font-black transition">
+                            <span x-text="sending ? '{% trans "Enviando..." %}' : '{% trans "Enviar feedback" %}'"></span>
+                        </button>
+                    </div>
+                </div>
+    
+                <!-- ABA MEUS FEEDBACKS -->
+                <div x-show="tab === 'mine'" class="px-6 py-5 overflow-y-auto space-y-3">
+                    <template x-if="mine.length === 0">
+                        <p class="text-center text-slate-600 italic text-sm py-8">{% trans "Você ainda não enviou feedbacks." %}</p>
+                    </template>
+                    <template x-for="fb in mine" :key="fb.id">
+                        <div class="rounded-xl border border-slate-800 bg-slate-800/30 p-4"
+                            :class="!fb.seen_by_author && 'ring-1 ring-purple-500/40'">
+                            <div class="flex items-center justify-between mb-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-slate-700 text-slate-300" x-text="fb.type_display"></span>
+                                    <span class="text-sm font-bold text-white" x-text="fb.subject"></span>
+                                </div>
+                                <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded"
+                                    :class="statusClass(fb.status)" x-text="fb.status_display"></span>
+                            </div>
+                            <p class="text-xs text-slate-400 whitespace-pre-wrap" x-text="fb.description"></p>
+                            <template x-if="fb.has_answer">
+                                <div class="mt-3 pl-3 border-l-2 border-purple-500/40">
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-purple-400 mb-1">{% trans "Resposta" %}</p>
+                                    <p class="text-xs text-slate-300 whitespace-pre-wrap" x-text="fb.answer"></p>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+    
+                <!-- ABA TRIAGEM (admin) -->
+                <template x-if="isAdmin">
+                    <div x-show="tab === 'admin'" class="flex flex-col overflow-hidden">
+                        <div class="px-6 py-3 border-b border-slate-800 flex items-center gap-2 flex-wrap shrink-0">
+                            <select x-model="filterStatus" @change="loadAll()"
+                                    class="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-300">
+                                <option value="">{% trans "Todos os status" %}</option>
+                                <template x-for="s in statuses" :key="s.value">
+                                    <option :value="s.value" x-text="s.label"></option>
+                                </template>
+                            </select>
+                            <select x-model="filterType" @change="loadAll()"
+                                    class="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-300">
+                                <option value="">{% trans "Todos os tipos" %}</option>
+                                <template x-for="t in types" :key="t.value">
+                                    <option :value="t.value" x-text="t.label"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="px-6 py-4 overflow-y-auto space-y-3">
+                            <template x-if="all.length === 0">
+                                <p class="text-center text-slate-600 italic text-sm py-8">{% trans "Nenhum feedback." %}</p>
+                            </template>
+                            <template x-for="fb in all" :key="fb.id">
+                                <div class="rounded-xl border border-slate-800 bg-slate-800/30 p-4">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-slate-700 text-slate-300" x-text="fb.type_display"></span>
+                                            <span class="text-sm font-bold text-white" x-text="fb.subject"></span>
+                                            <span class="text-[10px] text-slate-500" x-text="'· ' + fb.author"></span>
+                                        </div>
+                                        <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded" :class="statusClass(fb.status)" x-text="fb.status_display"></span>
+                                    </div>
+                                    <p class="text-xs text-slate-400 whitespace-pre-wrap mb-3" x-text="fb.description"></p>
+    
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">{% trans "Classificar" %}:</span>
+                                        <select x-model="fb._newStatus"
+                                                class="px-2 py-1 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300">
+                                            <template x-for="s in statuses" :key="s.value">
+                                                <option :value="s.value" x-text="s.label"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    <textarea x-model="fb._newAnswer" rows="2"
+                                            class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50 resize-none mb-2"
+                                            :placeholder="'{% trans "Resposta (opcional)" %}'"></textarea>
+                                    <div class="flex justify-end">
+                                        <button @click="respond(fb)"
+                                                class="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-black transition">
+                                            {% trans "Salvar" %}
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+    </div>   
+    <!-- fFIM DO MEU DE FEEDBACK-->
+
+    
     <main class="max-w-7xl mx-auto py-12 px-6 space-y-12">
+
+    
         <!-- Stats da BU -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
 
@@ -1036,7 +1607,7 @@
                     <div x-show="buStats.loading" class="animate-pulse"><div class="h-7 bg-slate-800 rounded w-14 mb-1"></div></div>
                     <div x-show="!buStats.loading">
                         <p class="text-2xl font-black text-orange-400" x-text="(buStats.no_vex || 0).toLocaleString('pt-BR')"></p>
-                        <p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">Sem VEX</p>
+                        <p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">{% trans "Sem VEX" %}</p>
                     </div>
                 </div>
             </div>
@@ -1068,7 +1639,7 @@
                             <div class="w-7 h-7 rounded-xl bg-slate-700 border border-slate-600 flex items-center justify-center">
                                 <i class="fas fa-chart-pie text-slate-400 text-[10px]"></i>
                             </div>
-                            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">Distribuição por Severidade</span>
+                            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Distribuição por Severidade" %}</span>
                         </div>
                         <span x-show="!buStats.loading && buStats.total_vulns > 0"
                               class="text-[9px] text-slate-600 font-mono"
@@ -1084,22 +1655,22 @@
                             </div>
                             <div class="grid grid-cols-4 gap-2">
                                 <div class="flex flex-col items-center gap-1 p-2 rounded-xl bg-red-500/10 border border-red-500/20">
-                                    <span class="text-[9px] font-black uppercase tracking-widest text-red-400">Critical</span>
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-red-400">{% trans "Critical" %}</span>
                                     <span class="text-xl font-black text-red-400" x-text="(buStats.by_severity.CRITICAL || 0).toLocaleString('pt-BR')"></span>
                                     <span class="text-[9px] text-red-400/60" x-text="`${Math.round((buStats.by_severity.CRITICAL / buStats.total_vulns) * 100)}%`"></span>
                                 </div>
                                 <div class="flex flex-col items-center gap-1 p-2 rounded-xl bg-orange-500/10 border border-orange-500/20">
-                                    <span class="text-[9px] font-black uppercase tracking-widest text-orange-400">High</span>
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-orange-400">{% trans "High" %}</span>
                                     <span class="text-xl font-black text-orange-400" x-text="(buStats.by_severity.HIGH || 0).toLocaleString('pt-BR')"></span>
                                     <span class="text-[9px] text-orange-400/60" x-text="`${Math.round((buStats.by_severity.HIGH / buStats.total_vulns) * 100)}%`"></span>
                                 </div>
                                 <div class="flex flex-col items-center gap-1 p-2 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
-                                    <span class="text-[9px] font-black uppercase tracking-widest text-yellow-400">Medium</span>
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-yellow-400">{% trans "Medium" %}</span>
                                     <span class="text-xl font-black text-yellow-400" x-text="(buStats.by_severity.MEDIUM || 0).toLocaleString('pt-BR')"></span>
                                     <span class="text-[9px] text-yellow-400/60" x-text="`${Math.round((buStats.by_severity.MEDIUM / buStats.total_vulns) * 100)}%`"></span>
                                 </div>
                                 <div class="flex flex-col items-center gap-1 p-2 rounded-xl bg-blue-500/10 border border-blue-500/20">
-                                    <span class="text-[9px] font-black uppercase tracking-widest text-blue-400">Low</span>
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-blue-400">{% trans "Low" %}</span>
                                     <span class="text-xl font-black text-blue-400" x-text="(buStats.by_severity.LOW || 0).toLocaleString('pt-BR')"></span>
                                     <span class="text-[9px] text-blue-400/60" x-text="`${Math.round((buStats.by_severity.LOW / buStats.total_vulns) * 100)}%`"></span>
                                 </div>
@@ -1107,7 +1678,7 @@
                         </div>
                     </template>
                     <template x-if="!buStats.loading && !buStats.total_vulns">
-                        <p class="text-slate-600 text-xs italic">Sem dados de vulnerabilidade.</p>
+                        <p class="text-slate-600 text-xs italic">{% trans "Sem dados de vulnerabilidade." %}</p>
                     </template>
                     <div x-show="buStats.loading" class="animate-pulse"><div class="h-4 bg-slate-800 rounded w-full mb-3"></div></div>
                 </div>
@@ -1132,11 +1703,11 @@
                 </button>
                 <button @click="uploadModal = { open: true, title: 'Firmware Upload', type: '', progress: 0, fileName: '', status: 'idle', error: '', productName: '', productVersion: '', showValidation: false }" 
                         class="bg-green-600 hover:bg-green-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition flex items-center shadow-lg shadow-green-900/40">
-                    <i class="fas fa-microchip mr-2"></i> Firmware File
+                    <i class="fas fa-microchip mr-2"></i>  {% trans "Scan de Firmware" %}
                 </button>
                 <button @click="openCsvModal()"
                         class="bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 text-purple-400 px-5 py-2.5 rounded-xl text-xs font-bold transition flex items-center">
-                    <i class="fas fa-file-csv mr-2"></i> CSV Manual
+                    <i class="fas fa-code mr-2"></i> {% trans "Scan de Arquivo/Diretorio" %}
                 </button>
                 {% else %}
                 <div class="flex items-center gap-2 px-4 py-2.5 text-[10px] text-slate-600 font-mono">
@@ -1251,11 +1822,11 @@
                                             return s + score;
                                         }, 0);
                                         let label, cls;
-                                        if (total >= cfg.tc)      { label = 'Crítico'; cls = 'bg-red-500/15 text-red-400 border-red-500/30'; }
+                                        if (total >= cfg.tc)      { label = '{% trans "Crítico" %}'; cls = 'bg-red-500/15 text-red-400 border-red-500/30'; }
                                         else if (total >= cfg.th) { label = 'Alto';    cls = 'bg-orange-500/15 text-orange-400 border-orange-500/30'; }
-                                        else if (total >= cfg.tm) { label = 'Médio';   cls = 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30'; }
+                                        else if (total >= cfg.tm) { label = '{% trans "Médio" %}';   cls = 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30'; }
                                         else if (total >= cfg.tl) { label = 'Baixo';   cls = 'bg-blue-500/15 text-blue-400 border-blue-500/30'; }
-                                        else                       { label = 'Mínimo'; cls = 'bg-slate-700 text-slate-400 border-slate-600'; }
+                                        else                       { label = '{% trans "Mínimo" %}'; cls = 'bg-slate-700 text-slate-400 border-slate-600'; }
                                         container.innerHTML = `
                                             <span class="inline-block px-3 py-1.5 text-xs font-black rounded-lg border uppercase ${cls}">${label}</span>
                                             <span class="block text-[10px] font-mono text-slate-500 mt-1">${total.toFixed(2)}</span>
@@ -1336,7 +1907,7 @@
              class="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 shadow-2xl">
             
             <h3 class="text-xl font-bold text-white mb-2" x-text="uploadModal.title"></h3>
-            <p class="text-slate-500 text-xs mb-6 uppercase tracking-widest font-mono">Matrix Security Engine / File Validation</p>
+            <p class="text-slate-500 text-xs mb-6 uppercase tracking-widest font-mono"> {{ APP_NAME }} Security Engine / File Validation</p>
 
             <!-- Campos de produto — ocultos para RAUC e EXT4 (produto é automático) -->
             <div x-show="uploadModal.type !== 'rauc' && uploadModal.type !== 'ext4'" class="space-y-3 mb-4">
@@ -1567,21 +2138,21 @@
                            download
                            class="group p-5 bg-slate-800 hover:bg-teal-600 rounded-3xl border border-slate-700 transition flex flex-col text-left text-white no-underline">
                             <i class="fas fa-file-export text-teal-500 group-hover:text-white mb-3"></i>
-                            <span class="text-sm font-bold">Exportar CycloneDX</span>
+                            <span class="text-sm font-bold">{% trans "Exportar CycloneDX" %}</span>
                             <span class="text-[9px] text-slate-500 group-hover:text-teal-100 mt-1 uppercase">Download SBOM</span>
                         </a>
                         <a :href="`/sbom/api/vex/export/${selectedSbom.id}/`"
                            download
                            class="group p-5 bg-slate-800 hover:bg-purple-600 rounded-3xl border border-slate-700 transition flex flex-col text-left text-white no-underline">
                             <i class="fas fa-shield-halved text-purple-500 group-hover:text-white mb-3"></i>
-                            <span class="text-sm font-bold">Exportar VEX</span>
+                            <span class="text-sm font-bold">{% trans "Exportar VEX" %}</span>
                             <span class="text-[9px] text-slate-500 group-hover:text-purple-100 mt-1 uppercase">CycloneDX + Risk Score</span>
                         </a>
                         <button @click="openDiff(selectedSbom.id, selectedSbom.name)"
                                 class="group p-5 bg-slate-800 hover:bg-yellow-600 rounded-3xl border border-slate-700 transition flex flex-col text-left text-white">
                             <i class="fas fa-code-compare text-yellow-500 group-hover:text-white mb-3"></i>
-                            <span class="text-sm font-bold">Comparar Versões</span>
-                            <span class="text-[9px] text-slate-500 group-hover:text-yellow-100 mt-1 uppercase">Diff entre SBOMs</span>
+                            <span class="text-sm font-bold">{% trans "Comparar Versões" %}</span>
+                            <span class="text-[9px] text-slate-500 group-hover:text-yellow-100 mt-1 uppercase">{% trans "Diff entre SBOMs" %}</span>
                         </button>
                         <button @click="
                                 if(confirm('Remover ' + selectedSbom.name + ' do monitoramento?\n\nO produto ficará inativo mas os dados serão preservados no banco.')) {
@@ -1670,12 +2241,22 @@
                 <div class="flex items-center gap-1 bg-slate-800 rounded-xl p-1 border border-slate-700 flex-wrap">
                     <button onclick="setSeverityFilter('')"            id="filter-all"        class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase">{% trans "Todas" %}</button>
                     <button onclick="setSeverityFilter('CRITICAL')"    id="filter-CRITICAL"   class="graph-filter-btn active px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-red-400">Critical</button>
-                    <button onclick="setSeverityFilter('HIGH')"        id="filter-HIGH"       class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-orange-400">High</button>
-                    <button onclick="setSeverityFilter('MEDIUM')"      id="filter-MEDIUM"     class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-yellow-400">Medium</button>
-                    <button onclick="setSeverityFilter('LOW')"         id="filter-LOW"        class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-blue-400">Low</button>
-                    <button onclick="setSeverityFilter('NEGLIGIBLE')"  id="filter-NEGLIGIBLE" class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-slate-400">Negligible</button>
-                    <button onclick="setSeverityFilter('UNKNOWN')"     id="filter-UNKNOWN"    class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-slate-500">Unknown</button>
+                    <button onclick="setSeverityFilter('HIGH')"        id="filter-HIGH"       class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-orange-400">{% trans "High" %}</button>
+                    <button onclick="setSeverityFilter('MEDIUM')"      id="filter-MEDIUM"     class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-yellow-400">{% trans "Medium" %}</button>
+                    <button onclick="setSeverityFilter('LOW')"         id="filter-LOW"        class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-blue-400">{% trans "Low" %}</button>
+                    <button onclick="setSeverityFilter('NEGLIGIBLE')"  id="filter-NEGLIGIBLE" class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-slate-400">{% trans "Negligible" %}</button>
+                    <button onclick="setSeverityFilter('UNKNOWN')"     id="filter-UNKNOWN"    class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-slate-500">{% trans "Unknown" %}</button>
                 </div>
+
+                <!-- Separador -->
+                <div class="w-px h-5 bg-slate-700 shrink-0"></div>
+
+                <!-- Modo estrutural: só componentes + dependências, sem CVEs (mais leve) -->
+                <button onclick="setRawMode()" id="filter-RAW"
+                        class="graph-filter-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase text-purple-300 border border-purple-500/30"
+                        title="{% trans "Mostra apenas componentes e suas dependências, sem vulnerabilidades" %}">
+                    <i class="fas fa-diagram-project mr-1"></i>{% trans "Componentes raw" %}
+                </button>
 
                 <!-- Separador -->
                 <div class="w-px h-5 bg-slate-700 shrink-0"></div>
@@ -2094,7 +2675,7 @@
                 </span>
                 <div>
                     <h3 class="text-xl font-black text-white font-mono" x-text="vulnDetail?.cve_id"></h3>
-                    <p class="text-[10px] text-slate-500 uppercase tracking-widest mt-1 font-mono">Detalhes da Vulnerabilidade</p>
+                    <p class="text-[10px] text-slate-500 uppercase tracking-widest mt-1 font-mono">{% trans "Detalhes da Vulnerabilidade" %}</p>
                 </div>
             </div>
             <button @click="vulnDetail = null" class="group bg-slate-800 hover:bg-red-500/20 p-3 rounded-2xl border border-slate-700 transition-all shrink-0">
@@ -2119,7 +2700,7 @@
                     <p class="text-[9px] text-slate-500 uppercase tracking-widest font-black mb-2">EPSS</p>
                     <p class="text-2xl font-black font-mono text-purple-400"
                        x-text="vulnDetail?.epss_score != null ? (vulnDetail.epss_score * 100).toFixed(1) + '%' : '—'"></p>
-                    <p class="text-[9px] text-slate-600 mt-1">prob. 30d</p>
+                    <p class="text-[9px] text-slate-600 mt-1">{% trans "prob. 30d" %}</p>
                 </div>
                 <!-- Risk Score -->
                 <div class="rounded-2xl p-4 border flex-1 min-w-[90px]"
@@ -2285,6 +2866,17 @@ function setSeverityFilter(sev) {
     fetchGraph(currentProductId, severities, '');
 }
 
+function setRawMode() {
+    // Modo estrutural: só componentes + dependências, sem vulnerabilidades.
+    activeSeverity = null;
+    document.querySelectorAll('.graph-filter-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById('filter-RAW');
+    if (btn) btn.classList.add('active');
+    const cveInput = document.getElementById('cve-search-input');
+    if (cveInput) cveInput.value = '';
+    fetchGraph(currentProductId, [], '', true);
+}
+
 function searchByCve() {
     const val = document.getElementById('cve-search-input').value.trim().toUpperCase();
     if (!val) return;
@@ -2308,7 +2900,7 @@ function loadGraph(productId) {
     fetchGraph(productId, ['CRITICAL'], '');
 }
 
-function fetchGraph(productId, severities, cve) {
+function fetchGraph(productId, severities, cve, raw) {
     const nameLabel = document.getElementById('modal-product-name');
     const loading   = document.getElementById('graph-loading');
     const counter   = document.getElementById('graph-node-count');
@@ -2318,11 +2910,15 @@ function fetchGraph(productId, severities, cve) {
 
     let url = `/sbom/api/graph/${productId}/`;
     const params = new URLSearchParams();
-    // Múltiplas severidades: ?severity=CRITICAL&severity=HIGH
-    if (severities && severities.length > 0) {
-        severities.forEach(s => params.append('severity', s));
+    if (raw) {
+        params.set('raw', 'true');
+    } else {
+        // Múltiplas severidades: ?severity=CRITICAL&severity=HIGH
+        if (severities && severities.length > 0) {
+            severities.forEach(s => params.append('severity', s));
+        }
+        if (cve) params.set('cve', cve);
     }
-    if (cve) params.set('cve', cve);
     if ([...params].length) url += '?' + params.toString();
 
     if (cyInstance) { cyInstance.destroy(); cyInstance = null; }
@@ -2332,13 +2928,15 @@ function fetchGraph(productId, severities, cve) {
         .then(data => {
             loading.classList.add('hidden');
             if (!data.nodes || data.nodes.length === 0) {
-                nameLabel.innerText = "Nenhum resultado para este filtro.";
+                nameLabel.innerText = "{% trans "Nenhum resultado para este filtro." %}";
                 counter.innerText = '';
                 return;
             }
             const vulnCount = data.nodes.filter(n => n.data.type === 'cve').length;
             const compCount = data.nodes.filter(n => n.data.type === 'component').length;
-            counter.innerText = `${compCount} componentes · ${vulnCount} CVEs`;
+            counter.innerText = raw
+                ? `${compCount} componentes · modo estrutural`
+                : `${compCount} componentes · ${vulnCount} CVEs`;
             
             cyInstance = cytoscape({
                 container: document.getElementById('cy-fullscreen'),
@@ -2505,7 +3103,7 @@ function fetchGraph(productId, severities, cve) {
         })
         .catch(err => {
             console.error("Erro ao carregar grafo:", err);
-            nameLabel.innerText = "Erro na requisição.";
+            nameLabel.innerText = "{% trans "Erro na requisição." %}";
         });
 }
 
@@ -3432,33 +4030,28 @@ function closeGraph() {
 })();
 </script>
 
-<!-- ── CSV MANUAL MODAL ───────────────────────────────── -->
+<!-- ── SCAN DE CÓDIGO-FONTE — MODAL ───────────────────── -->
 <div x-show="csvModal.open" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center p-6">
     <div @click="csvModal.open = false" class="absolute inset-0 bg-black/80 backdrop-blur-sm"></div>
-    <div class="relative w-full max-w-5xl bg-slate-900 border border-purple-500/20 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+    <div class="relative w-full max-w-7xl bg-slate-900 border border-purple-500/20 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
          style="max-height: 90vh">
 
         <!-- Header -->
         <div class="px-8 py-5 border-b border-slate-800 flex items-center justify-between shrink-0">
             <div class="flex items-center gap-3">
                 <div class="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
-                    <i class="fas fa-file-csv text-purple-400"></i>
+                    <i class="fas fa-code text-purple-400"></i>
                 </div>
                 <div>
-                    <p class="text-white font-black">{% trans "Criar SBOM Manual via CSV" %}</p>
+                    <p class="text-white font-black">{% trans "Criar SBOM a partir de arquivos e pastas" %}</p>
                     <p class="text-[10px] font-mono text-slate-500">
-                        <span x-text="csvModal.step === 'form' ? '{% trans "Passo 1 — Informar produto e carregar CSV" %}' :
-                                      csvModal.step === 'preview' ? '{% trans "Passo 2 — Revisar e editar componentes" %}' :
+                        <span x-text="csvModal.step === 'form' ? '{% trans "Passo 1 — Informar produto e escanear os arquivos" %}' :
+                                      csvModal.step === 'preview' ? '{% trans "Passo 2 — Revisar e completar os componentes detectados" %}' :
                                       csvModal.step === 'done' ? '{% trans "Concluído" %}' : '{% trans "Salvando..." %}'"></span>
                     </p>
                 </div>
             </div>
             <div class="flex items-center gap-3">
-                <!-- Download template -->
-                <a href="/sbom/csv/template/" target="_blank"
-                   class="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 hover:text-white text-xs font-bold transition">
-                    <i class="fas fa-download text-[10px]"></i> {% trans "Template CSV" %}
-                </a>
                 <button @click="csvModal.open = false"
                         class="p-2 rounded-xl bg-slate-800 hover:bg-red-500/20 border border-slate-700 transition">
                     <i class="fas fa-times text-slate-400 text-xs"></i>
@@ -3467,7 +4060,23 @@ function closeGraph() {
         </div>
 
         <!-- STEP 1: FORM -->
-        <div x-show="csvModal.step === 'form'" class="px-8 py-6 space-y-5">
+        <div x-show="csvModal.step === 'form'" class="px-8 py-6 space-y-5 overflow-y-auto">
+            <!-- Aviso: já existem componentes na sessão -->
+            <div x-show="csvModal.components.length > 0"
+                 class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-purple-500/10 border border-purple-500/25">
+                <div class="flex items-center gap-2 text-[11px] text-purple-200">
+                    <i class="fas fa-circle-info"></i>
+                    <span>
+                        <span class="font-black" x-text="csvModal.components.length"></span>
+                        {% trans "componente(s) já escaneado(s) — escaneie mais pastas para somar, ou volte à tabela para revisar." %}
+                    </span>
+                </div>
+                <button @click="csvModal.step = 'preview'"
+                        class="shrink-0 px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-black transition flex items-center gap-1.5">
+                    <i class="fas fa-table"></i> {% trans "Ver tabela" %}
+                </button>
+            </div>
+
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">{% trans "Nome do Produto" %} *</p>
@@ -3483,38 +4092,129 @@ function closeGraph() {
                 </div>
             </div>
 
-            <div>
-                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">{% trans "Arquivo CSV" %} *</p>
-                <label class="flex items-center justify-center gap-3 w-full h-28 border-2 border-dashed border-slate-700 hover:border-purple-500/50 rounded-xl cursor-pointer transition bg-slate-800/30">
-                    <i class="fas fa-file-csv text-2xl text-purple-500/50"></i>
-                    <div class="text-center">
-                        <p class="text-sm font-bold text-slate-400">{% trans "Clique para selecionar o CSV" %}</p>
-                        <p class="text-[10px] text-slate-600 mt-1">Colunas: name, version, type (opcional), purl (opcional), cpe (opcional)</p>
+            <!-- SCANNER DE CÓDIGO-FONTE (via principal) -->
+            <div class="rounded-2xl border border-purple-500/20 bg-purple-500/[0.03] p-5 space-y-4">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-wand-magic-sparkles text-purple-400 text-sm"></i>
+                    <p class="text-sm font-black text-white">{% trans "Escanear pastas e arquivos" %}</p>
+                    <span class="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">{% trans "Recomendado" %}</span>
+                </div>
+                <p class="text-[11px] text-slate-500">
+                    {% trans "Envie a pasta do firmware: os cabeçalhos dos arquivos são lidos e os componentes (nome, versão, PURL, CPE, autor, licença, dependências) são pré-preenchidos para revisão. Repita quantas vezes precisar — cada seleção adiciona ao mesmo SBOM." %}
+                </p>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">{% trans "Caminho base (opcional)" %}</p>
+                        <input type="text" x-model="csvModal.basePath"
+                               placeholder="Ex: C:\projetos\firmware  ou  /home/dev/fw"
+                               spellcheck="false"
+                               class="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-purple-500/50">
+                        <p class="text-[10px] text-slate-600 mt-1">{% trans "Navegadores não expõem o caminho absoluto; informe-o para compor a coluna de pasta." %}</p>
                     </div>
-                    <input type="file" accept=".csv" class="hidden" @change="parseCsv($event)">
-                </label>
+                    <div>
+                        <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">{% trans "Extensões a escanear" %}</p>
+                        <div class="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl min-h-[42px] cursor-text focus-within:border-purple-500/50"
+                             @click="$refs.extInput.focus()">
+                            <template x-for="ext in csvModal.extensions" :key="ext">
+                                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 text-[11px] font-mono">
+                                    <span x-text="ext"></span>
+                                    <button type="button" @click.stop="removeExt(ext)"
+                                            class="text-purple-400 hover:text-white font-bold leading-none">&times;</button>
+                                </span>
+                            </template>
+                            <input type="text" x-ref="extInput" x-model="csvModal.extInput"
+                                   @keydown.enter.prevent="addExtsFromInput()"
+                                   @blur="addExtsFromInput()"
+                                   placeholder=".ext + Enter" spellcheck="false"
+                                   class="flex-1 min-w-[80px] bg-transparent text-xs font-mono text-white placeholder-slate-600 focus:outline-none py-0.5">
+                        </div>
+                        <p class="text-[10px] text-slate-600 mt-1">{% trans "Somente arquivos com estas extensões são enviados e escaneados." %}</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black cursor-pointer transition"
+                           :class="(csvModal.scanning || !csvModal.extensions.length) && 'opacity-40 pointer-events-none'">
+                        <i class="fas fa-folder-open text-[11px]"></i> {% trans "Adicionar pasta" %}
+                        <input type="file" webkitdirectory multiple class="hidden" @change="scanSourceFiles($event)">
+                    </label>
+                    <label class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-xs font-black cursor-pointer transition"
+                           :class="(csvModal.scanning || !csvModal.extensions.length) && 'opacity-40 pointer-events-none'">
+                        <i class="fas fa-file-code text-[11px]"></i> {% trans "Adicionar arquivos" %}
+                        <input type="file" multiple class="hidden" @change="scanSourceFiles($event)">
+                    </label>
+                    <p x-show="csvModal.scanning" class="text-[11px] text-purple-300 font-mono">
+                        <i class="fas fa-spinner fa-spin mr-1"></i> {% trans "Escaneando arquivos..." %}
+                    </p>
+                </div>
+            </div>
+
+            <!-- RETORNO À TABELA + VIA ALTERNATIVA -->
+            <div class="flex items-center gap-3 flex-wrap">
+                <button x-show="csvModal.components.length > 0"
+                        @click="csvModal.step = 'preview'"
+                        class="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black transition flex items-center gap-2">
+                    <i class="fas fa-table"></i>
+                    {% trans "Ver componentes escaneados" %}
+                    <span class="px-1.5 py-0.5 rounded-md bg-white/20 text-[10px]" x-text="csvModal.components.length"></span>
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+                <button x-show="csvModal.productName && csvModal.components.length === 0"
+                        @click="csvModal.step = 'preview'"
+                        class="px-4 py-2 rounded-xl bg-slate-800/60 border border-slate-700/60 text-slate-500 hover:text-slate-300 text-[11px] font-bold transition">
+                    {% trans "Preencher manualmente" %} <i class="fas fa-arrow-right ml-1"></i>
+                </button>
             </div>
 
             <p x-show="csvModal.error" class="text-[11px] text-red-400 font-mono" x-text="csvModal.error"></p>
-
-            <div class="flex justify-between items-center pt-2">
-                <p class="text-[10px] text-slate-600">{% trans "Ou adicione componentes manualmente após carregar o CSV" %}</p>
-                <button x-show="csvModal.productName"
-                        @click="csvModal.components = []; csvModal.step = 'preview'"
-                        class="px-4 py-2 rounded-xl bg-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-600 transition">
-                    {% trans "Continuar sem CSV" %} <i class="fas fa-arrow-right ml-1"></i>
-                </button>
-            </div>
         </div>
 
         <!-- STEP 2: PREVIEW TABLE -->
         <div x-show="csvModal.step === 'preview'" class="flex flex-col flex-1 overflow-hidden">
+            <!-- Barra de progresso do scan (pasta por pasta) -->
+            <div x-show="csvModal.progress" x-cloak class="px-8 py-4 border-b border-slate-800 bg-slate-900 shrink-0">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2 text-xs text-purple-200">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>{% trans "Analisando" %}</span>
+                        <span class="font-mono text-slate-400" x-text="csvModal.progress ? ('· ' + csvModal.progress.currentFolder + '/') : ''"></span>
+                    </div>
+                    <button @click="cancelScan()"
+                            class="text-[10px] font-black uppercase text-red-400 hover:text-red-300 transition">
+                        <i class="fas fa-stop mr-1"></i>{% trans "Cancelar" %}
+                    </button>
+                </div>
+                <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div class="h-full bg-purple-500 transition-all duration-200"
+                         :style="'width: ' + (csvModal.progress ? Math.round(100 * csvModal.progress.done / csvModal.progress.total) : 0) + '%'"></div>
+                </div>
+                <div class="flex items-center justify-between mt-2 text-[10px] font-mono text-slate-500">
+                    <span x-text="csvModal.progress ? (
+                        Math.round(100 * csvModal.progress.done / csvModal.progress.total) + '% · ' +
+                        csvModal.progress.done.toLocaleString() + ' / ' + csvModal.progress.total.toLocaleString() + ' {% trans "arquivos" %}'
+                    ) : ''"></span>
+                    <span x-show="csvModal.progress && csvModal.progress.etaSeconds !== null"
+                          x-text="csvModal.progress ? ('{% trans "tempo estimado" %}: ~' + csvModal.progress.etaSeconds + 's') : ''"></span>
+                </div>
+            </div>
+
             <!-- Product info bar -->
             <div class="px-8 py-3 border-b border-slate-800 bg-slate-800/30 flex items-center justify-between shrink-0">
                 <div class="flex items-center gap-4">
-                    <span class="text-sm font-black text-white" x-text="csvModal.productName"></span>
+                    <span class="text-sm font-black text-white" x-text="csvModal.productName || '{% trans "(sem nome)" %}'"></span>
                     <span class="text-xs font-mono text-slate-500" x-text="csvModal.productVersion || '—'"></span>
                     <span class="text-[10px] font-mono text-slate-600" x-text="csvModal.components.length + ' {% trans "componentes" %}'"></span>
+                    <span x-show="csvModal.scannedFiles" class="text-[10px] font-mono text-emerald-500/80"
+                          x-text="csvModal.scannedFiles + ' {% trans "arquivos escaneados" %}'"></span>
+                    <span class="text-[9px] font-mono text-amber-500/70"
+                          x-show="csvModal.components.some(c => !c.version || !c.license)">
+                        <i class="fas fa-triangle-exclamation mr-1"></i>{% trans "campos pendentes destacados em âmbar" %}
+                    </span>
+                    <span class="text-[9px] font-mono text-red-400 animate-blink"
+                          x-show="csvModal.components.some(c => c.duplicate)">
+                        <i class="fas fa-triangle-exclamation mr-1"></i><span x-text="csvModal.components.filter(c => c.duplicate).length"></span> {% trans "linha(s) duplicada(s) — decida qual manter" %}
+                    </span>
                 </div>
                 <button @click="csvModal.step = 'form'"
                         class="text-xs text-slate-500 hover:text-slate-300 transition">
@@ -3522,53 +4222,190 @@ function closeGraph() {
                 </button>
             </div>
 
+            <!-- Barra de preenchimento em massa (bulk edit) -->
+            <div class="px-8 py-3 border-b border-slate-800 bg-slate-800/20 flex items-center gap-4 flex-wrap shrink-0">
+                <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                    {% trans "Preencher em massa" %}
+                </span>
+
+                <!-- Versão -->
+                <div class="flex items-center gap-1">
+                    <input type="text" x-model="csvModal.bulk.version"
+                           @keydown.enter="applyBulk('version')"
+                           placeholder="{% trans "versão" %}"
+                           class="w-24 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500/50">
+                    <button @click="applyBulk('version')" :disabled="!selectedCount() || !csvModal.bulk.version.trim()"
+                            class="px-2 py-1.5 rounded-lg bg-purple-600/80 hover:bg-purple-500 disabled:opacity-30 text-white text-[10px] font-black transition">
+                        {% trans "aplicar" %}
+                    </button>
+                    <button @click="selectEmptyFor('version')" :title="'{% trans "Selecionar linhas sem versão" %}'"
+                            class="px-1.5 py-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-600 text-slate-300 text-[10px] transition">
+                        <i class="fas fa-filter"></i>
+                    </button>
+                </div>
+
+                <!-- Autor -->
+                <div class="flex items-center gap-1">
+                    <input type="text" x-model="csvModal.bulk.author"
+                           @keydown.enter="applyBulk('author')"
+                           placeholder="{% trans "autor" %}"
+                           class="w-32 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500/50">
+                    <button @click="applyBulk('author')" :disabled="!selectedCount() || !csvModal.bulk.author.trim()"
+                            class="px-2 py-1.5 rounded-lg bg-purple-600/80 hover:bg-purple-500 disabled:opacity-30 text-white text-[10px] font-black transition">
+                        {% trans "aplicar" %}
+                    </button>
+                    <button @click="selectEmptyFor('author')" :title="'{% trans "Selecionar linhas sem autor" %}'"
+                            class="px-1.5 py-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-600 text-slate-300 text-[10px] transition">
+                        <i class="fas fa-filter"></i>
+                    </button>
+                </div>
+
+                <!-- Fornecedor -->
+                <div class="flex items-center gap-1">
+                    <input type="text" x-model="csvModal.bulk.supplier"
+                           @keydown.enter="applyBulk('supplier')"
+                           placeholder="{% trans "fornecedor" %}"
+                           class="w-32 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500/50">
+                    <button @click="applyBulk('supplier')" :disabled="!selectedCount() || !csvModal.bulk.supplier.trim()"
+                            class="px-2 py-1.5 rounded-lg bg-purple-600/80 hover:bg-purple-500 disabled:opacity-30 text-white text-[10px] font-black transition">
+                        {% trans "aplicar" %}
+                    </button>
+                    <button @click="selectEmptyFor('supplier')" :title="'{% trans "Selecionar linhas sem fornecedor" %}'"
+                            class="px-1.5 py-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-600 text-slate-300 text-[10px] transition">
+                        <i class="fas fa-filter"></i>
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-3 ml-auto">
+                    <span class="text-[10px] font-mono" :class="selectedCount() ? 'text-purple-300' : 'text-slate-600'">
+                        <span x-text="selectedCount()"></span> {% trans "selecionado(s)" %}
+                    </span>
+                    <button x-show="selectedCount()" @click="clearSelection()"
+                            class="text-[10px] text-slate-500 hover:text-slate-300 transition">
+                        {% trans "limpar seleção" %}
+                    </button>
+                    <span x-show="csvModal.bulkFeedback" class="text-[10px] font-mono text-emerald-400">
+                        <template x-if="csvModal.bulkFeedback">
+                            <span>
+                                <i class="fas fa-check mr-1"></i>
+                                <span x-text="csvModal.bulkFeedback.applied"></span> {% trans "preenchido(s)" %}<span
+                                    x-show="csvModal.bulkFeedback.skipped" class="text-amber-400">, <span x-text="csvModal.bulkFeedback.skipped"></span> {% trans "já tinha valor (mantido)" %}</span>
+                            </span>
+                        </template>
+                    </span>
+                </div>
+            </div>
+
             <!-- Table -->
-            <div class="overflow-y-auto flex-1">
-                <table class="w-full text-left">
-                    <thead class="sticky top-0 bg-slate-900 border-b border-slate-800">
+            <div class="overflow-auto flex-1">
+                <table class="min-w-[1600px] w-full text-left">
+                    <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 z-10">
                         <tr>
-                            <th class="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Nome" %} *</th>
-                            <th class="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Versão" %} *</th>
-                            <th class="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Tipo" %}</th>
-                            <th class="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">PURL</th>
-                            <th class="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">CPE</th>
-                            <th class="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600"></th>
+                            <th class="px-3 py-3">
+                                <input type="checkbox" :checked="allSelected()" @change="toggleSelectAll($event)"
+                                       class="accent-purple-500 cursor-pointer" :title="'{% trans "Selecionar todos" %}'">
+                            </th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Origem" %}</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Nome" %} *</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Versão" %} *</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Tipo" %}</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Fornecedor" %}</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Licença" %}</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">PURL</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">CPE</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Autor" %}</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Descrição" %}</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Depende de" %}</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600">{% trans "Pasta" %}</th>
+                            <th class="px-3 py-3 text-[9px] font-black uppercase tracking-widest text-slate-600"></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-800/50">
                         <template x-for="(comp, idx) in csvModal.components" :key="idx">
-                            <tr class="hover:bg-slate-800/20">
-                                <td class="px-4 py-2">
+                            <tr class="hover:bg-slate-800/20"
+                                :class="[comp.duplicate && 'dup-row', comp._sel && 'bg-purple-500/5']">
+                                <td class="px-3 py-2">
+                                    <input type="checkbox" x-model="comp._sel"
+                                           class="accent-purple-500 cursor-pointer">
+                                </td>
+                                <td class="px-3 py-2 whitespace-nowrap">
+                                    <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded"
+                                          :class="{
+                                              'bg-emerald-500/20 text-emerald-400': comp.origin === 'auto',
+                                              'bg-sky-500/20 text-sky-400': comp.origin === 'csv',
+                                              'bg-slate-600/30 text-slate-400': !comp.origin || comp.origin === 'manual',
+                                          }"
+                                          x-text="comp.origin === 'auto' ? '{% trans "scan" %}' : comp.origin === 'csv' ? 'csv' : '{% trans "manual" %}'"></span>
+                                    <span x-show="comp.duplicate"
+                                          class="dup-badge ml-1 text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-red-500/20 text-red-400"
+                                          :title="'{% trans "Nome repetido em caminhos diferentes — decida qual manter" %}'">
+                                        <i class="fas fa-triangle-exclamation"></i> {% trans "dup" %}
+                                    </span>
+                                </td>
+                                <td class="px-3 py-2 min-w-[150px]">
                                     <input type="text" x-model="comp.name"
                                            class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
                                            placeholder="{% trans "nome" %}">
                                 </td>
-                                <td class="px-4 py-2">
+                                <td class="px-3 py-2">
                                     <input type="text" x-model="comp.version"
-                                           class="w-24 px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
-                                           placeholder="{% trans "versão" %}">
+                                           class="w-24 px-2 py-1.5 bg-slate-800 border rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
+                                           :class="comp.version ? 'border-slate-700' : 'border-amber-500/50 bg-amber-500/5'"
+                                           placeholder="{% trans "pendente" %}">
                                 </td>
-                                <td class="px-4 py-2">
+                                <td class="px-3 py-2">
                                     <select x-model="comp.type"
                                             class="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-300 focus:outline-none">
                                         <option value="library">library</option>
                                         <option value="firmware">firmware</option>
                                         <option value="application">application</option>
                                         <option value="framework">framework</option>
+                                        <option value="file">file</option>
                                         <option value="other">other</option>
                                     </select>
                                 </td>
-                                <td class="px-4 py-2">
+                                <td class="px-3 py-2 min-w-[120px]">
+                                    <input type="text" x-model="comp.supplier"
+                                           class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
+                                           placeholder="{% trans "fornecedor" %}">
+                                </td>
+                                <td class="px-3 py-2 min-w-[110px]">
+                                    <input type="text" x-model="comp.license"
+                                           class="w-full px-2 py-1.5 bg-slate-800 border rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
+                                           :class="comp.license ? 'border-slate-700' : 'border-amber-500/50 bg-amber-500/5'"
+                                           placeholder="SPDX id">
+                                </td>
+                                <td class="px-3 py-2 min-w-[190px]">
                                     <input type="text" x-model="comp.purl"
                                            class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500/50 font-mono"
                                            placeholder="pkg:generic/nome@versao">
                                 </td>
-                                <td class="px-4 py-2">
+                                <td class="px-3 py-2 min-w-[190px]">
                                     <input type="text" x-model="comp.cpe"
                                            class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500/50 font-mono"
                                            placeholder="cpe:2.3:a:...">
                                 </td>
-                                <td class="px-4 py-2">
+                                <td class="px-3 py-2 min-w-[130px]">
+                                    <input type="text" x-model="comp.author"
+                                           class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
+                                           placeholder="{% trans "autor" %}">
+                                </td>
+                                <td class="px-3 py-2 min-w-[220px]">
+                                    <input type="text" x-model="comp.description" :title="comp.description"
+                                           class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
+                                           placeholder="{% trans "descrição" %}">
+                                </td>
+                                <td class="px-3 py-2 min-w-[180px]">
+                                    <input type="text" x-model="comp.depends" :title="comp.depends"
+                                           class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
+                                           placeholder="{% trans "dependências" %}">
+                                </td>
+                                <td class="px-3 py-2 min-w-[160px]">
+                                    <input type="text" x-model="comp.folder" :title="comp.folder"
+                                           class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-400 focus:outline-none focus:border-purple-500/50 font-mono"
+                                           placeholder="{% trans "pasta" %}">
+                                </td>
+                                <td class="px-3 py-2">
                                     <button @click="removeCsvRow(idx)"
                                             class="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-600 hover:text-red-400 transition">
                                         <i class="fas fa-trash text-xs"></i>
@@ -3577,8 +4414,8 @@ function closeGraph() {
                             </tr>
                         </template>
                         <tr x-show="csvModal.components.length === 0">
-                            <td colspan="6" class="px-4 py-8 text-center text-slate-600 text-sm italic">
-                                {% trans 'Nenhum componente. Clique em "+ Adicionar" abaixo.' %}
+                            <td colspan="14" class="px-4 py-8 text-center text-slate-600 text-sm italic">
+                                {% trans 'Nenhum componente detectado. Escaneie mais arquivos ou clique em "+ Adicionar linha".' %}
                             </td>
                         </tr>
                     </tbody>
@@ -3587,10 +4424,20 @@ function closeGraph() {
 
             <!-- Footer actions -->
             <div class="px-8 py-4 border-t border-slate-800 flex items-center justify-between shrink-0 bg-slate-900">
-                <button @click="addCsvRow()"
-                        class="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 hover:text-white text-xs font-bold transition">
-                    <i class="fas fa-plus text-[10px]"></i> {% trans "Adicionar linha" %}
-                </button>
+                <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600/20 border border-purple-500/30 text-purple-300 hover:text-white text-xs font-bold cursor-pointer transition"
+                           :class="csvModal.scanning && 'opacity-40 pointer-events-none'">
+                        <i class="fas fa-folder-open text-[10px]"></i> {% trans "Escanear mais arquivos" %}
+                        <input type="file" webkitdirectory multiple class="hidden" @change="scanSourceFiles($event)">
+                    </label>
+                    <button @click="addCsvRow()"
+                            class="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 hover:text-white text-xs font-bold transition">
+                        <i class="fas fa-plus text-[10px]"></i> {% trans "Adicionar linha" %}
+                    </button>
+                    <p x-show="csvModal.scanning" class="text-[11px] text-purple-300 font-mono">
+                        <i class="fas fa-spinner fa-spin mr-1"></i> {% trans "Escaneando..." %}
+                    </p>
+                </div>
                 <div class="flex items-center gap-3">
                     <p x-show="csvModal.error" class="text-[10px] text-red-400 font-mono" x-text="csvModal.error"></p>
                     <button @click="saveCsvSbom()"
@@ -3624,7 +4471,7 @@ function closeGraph() {
         <div class="flex items-center justify-between px-8 py-6 border-b border-slate-800">
             <div>
                 <h3 class="text-white font-black text-lg" x-text="'Comparar SBOMs — ' + diffModal.productName"></h3>
-                <p class="text-slate-500 text-[10px] uppercase tracking-widest mt-1">Compare qualquer SBOM da sua BU</p>
+                <p class="text-slate-500 text-[10px] uppercase tracking-widest mt-1">{% trans "Compare qualquer SBOM da sua BU" %}</p>
             </div>
             <button @click="diffModal.open = false" class="text-slate-500 hover:text-white transition">
                 <i class="fas fa-times text-xl"></i>
@@ -3634,9 +4481,9 @@ function closeGraph() {
         <!-- Seleção de versões -->
         <div class="px-8 py-5 border-b border-slate-800 flex items-center gap-4">
             <div class="flex-1">
-                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">SBOM Base</p>
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">{% trans "SBOM Base" %}</p>
                 <select x-model="diffModal.uploadA" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none">
-                    <option value="">Selecione...</option>
+                    <option value="">{% trans "Selecione..." %}</option>
                     <template x-for="u in diffModal.uploads" :key="u.id">
                         <option :value="u.id" x-text="u.label"></option>
                     </template>
@@ -3646,7 +4493,7 @@ function closeGraph() {
                 <i class="fas fa-arrow-right text-slate-600 text-xl"></i>
             </div>
             <div class="flex-1">
-                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">SBOM para Comparar</p>
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">{% trans "SBOM para Comparar" %}</p>
                 <select x-model="diffModal.uploadB" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none">
                     <option value="">Selecione...</option>
                     <template x-for="u in diffModal.uploads" :key="u.id">
@@ -3675,23 +4522,23 @@ function closeGraph() {
                     <div class="flex items-center justify-between mb-4">
                         <div class="grid grid-cols-5 gap-3 flex-1 mr-3">
                             <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 text-center">
-                                <p class="text-[9px] uppercase tracking-widest text-slate-500 mb-1">Adicionados</p>
+                                <p class="text-[9px] uppercase tracking-widest text-slate-500 mb-1">{% trans "Adicionados" %}</p>
                                 <p class="text-2xl font-black text-green-400" x-text="diffModal.result.added.length"></p>
                             </div>
                             <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 text-center">
-                                <p class="text-[9px] uppercase tracking-widest text-slate-500 mb-1">Removidos</p>
+                                <p class="text-[9px] uppercase tracking-widest text-slate-500 mb-1">{% trans "Removidos" %}</p>
                                 <p class="text-2xl font-black text-red-400" x-text="diffModal.result.removed.length"></p>
                             </div>
                             <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 text-center">
-                                <p class="text-[9px] uppercase tracking-widest text-slate-500 mb-1">Atualizados</p>
+                                <p class="text-[9px] uppercase tracking-widest text-slate-500 mb-1">{% trans "Atualizados" %}</p>
                                 <p class="text-2xl font-black text-yellow-400" x-text="diffModal.result.updated.length"></p>
                             </div>
                             <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 text-center">
-                                <p class="text-[9px] uppercase tracking-widest text-slate-500 mb-1">CVEs Novos</p>
+                                <p class="text-[9px] uppercase tracking-widest text-slate-500 mb-1">{% trans "CVEs Novos" %}</p>
                                 <p class="text-2xl font-black text-orange-400" x-text="diffModal.result.new_vulns.length"></p>
                             </div>
                             <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 text-center">
-                                <p class="text-[9px] uppercase tracking-widest text-slate-500 mb-1">CVEs Resolvidos</p>
+                                <p class="text-[9px] uppercase tracking-widest text-slate-500 mb-1">{% trans "CVEs Resolvidos" %}</p>
                                 <p class="text-2xl font-black text-blue-400" x-text="diffModal.result.resolved_vulns.length"></p>
                             </div>
                         </div>
@@ -3715,7 +4562,7 @@ function closeGraph() {
                     <!-- Adicionados -->
                     <div x-show="diffModal.tab === 'added'">
                         <template x-if="diffModal.result.added.length === 0">
-                            <p class="text-slate-600 text-sm italic">Nenhum componente adicionado.</p>
+                            <p class="text-slate-600 text-sm italic">{% trans "Nenhum componente adicionado." %}</p>
                         </template>
                         <template x-for="c in diffModal.result.added" :key="c.name + c.version">
                             <div class="flex items-center justify-between py-2 border-b border-slate-800">
@@ -3731,7 +4578,7 @@ function closeGraph() {
                     <!-- Removidos -->
                     <div x-show="diffModal.tab === 'removed'">
                         <template x-if="diffModal.result.removed.length === 0">
-                            <p class="text-slate-600 text-sm italic">Nenhum componente removido.</p>
+                            <p class="text-slate-600 text-sm italic">{% trans "Nenhum componente removido." %}</p>
                         </template>
                         <template x-for="c in diffModal.result.removed" :key="c.name + c.version">
                             <div class="flex items-center justify-between py-2 border-b border-slate-800">
@@ -3747,7 +4594,7 @@ function closeGraph() {
                     <!-- Atualizados -->
                     <div x-show="diffModal.tab === 'updated'">
                         <template x-if="diffModal.result.updated.length === 0">
-                            <p class="text-slate-600 text-sm italic">Nenhum componente atualizado.</p>
+                            <p class="text-slate-600 text-sm italic">{% trans "Nenhum componente atualizado." %}</p>
                         </template>
                         <template x-for="c in diffModal.result.updated" :key="c.name">
                             <div class="flex items-center justify-between py-2 border-b border-slate-800">
@@ -3764,7 +4611,7 @@ function closeGraph() {
                     <!-- CVEs Novos -->
                     <div x-show="diffModal.tab === 'new_vulns'">
                         <template x-if="diffModal.result.new_vulns.length === 0">
-                            <p class="text-slate-600 text-sm italic">Nenhum CVE novo.</p>
+                            <p class="text-slate-600 text-sm italic">{% trans "Nenhum CVE novo." %}</p>
                         </template>
                         <template x-for="v in diffModal.result.new_vulns" :key="v.cve_id">
                             <div class="flex items-center justify-between py-2 border-b border-slate-800">
@@ -3788,7 +4635,7 @@ function closeGraph() {
                     <!-- CVEs Resolvidos -->
                     <div x-show="diffModal.tab === 'resolved_vulns'">
                         <template x-if="diffModal.result.resolved_vulns.length === 0">
-                            <p class="text-slate-600 text-sm italic">Nenhum CVE resolvido.</p>
+                            <p class="text-slate-600 text-sm italic">{% trans "Nenhum CVE resolvido." %}</p>
                         </template>
                         <template x-for="v in diffModal.result.resolved_vulns" :key="v.cve_id">
                             <div class="flex items-center justify-between py-2 border-b border-slate-800">
@@ -3796,7 +4643,7 @@ function closeGraph() {
                                     <span class="text-sm font-bold text-blue-400" x-text="v.cve_id"></span>
                                     <span class="text-[10px] text-slate-500 ml-2" x-text="v.component"></span>
                                 </div>
-                                <span class="text-[10px] font-black px-2 py-0.5 rounded bg-blue-500/20 text-blue-400">Resolvido</span>
+                                <span class="text-[10px] font-black px-2 py-0.5 rounded bg-blue-500/20 text-blue-400">{% trans "Resolvido" %}</span>
                             </div>
                         </template>
                     </div>
@@ -3808,7 +4655,7 @@ function closeGraph() {
             <template x-if="!diffModal.result && !diffModal.loading && !diffModal.error">
                 <div class="text-center py-12 text-slate-600">
                     <i class="fas fa-code-compare text-4xl mb-4 block"></i>
-                    <p class="text-sm">Selecione duas versões e clique em Comparar</p>
+                    <p class="text-sm">{% trans "Selecione duas versões e clique em Comparar" %}</p>
                 </div>
             </template>
         </div>
@@ -3831,9 +4678,9 @@ function closeGraph() {
             </div>
             <div class="flex items-center gap-2">
                 <button @click="toggleSev('CRITICAL')" class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition border" :class="noVexModal.severities.includes('CRITICAL') ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-slate-800 text-slate-600 border-slate-700'">Critical</button>
-                <button @click="toggleSev('HIGH')" class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition border" :class="noVexModal.severities.includes('HIGH') ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 'bg-slate-800 text-slate-600 border-slate-700'">High</button>
-                <button @click="toggleSev('MEDIUM')" class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition border" :class="noVexModal.severities.includes('MEDIUM') ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-slate-800 text-slate-600 border-slate-700'">Medium</button>
-                <button @click="toggleSev('LOW')" class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition border" :class="noVexModal.severities.includes('LOW') ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-slate-800 text-slate-600 border-slate-700'">Low</button>
+                <button @click="toggleSev('HIGH')" class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition border" :class="noVexModal.severities.includes('HIGH') ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 'bg-slate-800 text-slate-600 border-slate-700'">{% trans "High" %}</button>
+                <button @click="toggleSev('MEDIUM')" class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition border" :class="noVexModal.severities.includes('MEDIUM') ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-slate-800 text-slate-600 border-slate-700'">{% trans "Medium" %}</button>
+                <button @click="toggleSev('LOW')" class="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition border" :class="noVexModal.severities.includes('LOW') ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-slate-800 text-slate-600 border-slate-700'">{% trans "Low" %}</button>
                 <button @click="noVexModal.open = false" class="ml-2 text-slate-500 hover:text-white transition"><i class="fas fa-times text-xl"></i></button>
             </div>
         </div>
@@ -3842,16 +4689,16 @@ function closeGraph() {
                 <thead class="sticky top-0 bg-slate-900 border-b border-slate-800">
                     <tr>
                         <th class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">CVE</th>
-                        <th class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Severidade</th>
+                        <th class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Severidade" %}</th>
                         <th class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">CVSS</th>
-                        <th class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Componente</th>
-                        <th class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Produto</th>
-                        <th class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Exploit</th>
+                        <th class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Componente" %}</th>
+                        <th class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Produto" %}</th>
+                        <th class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">{% trans "Exploit" %}</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-800">
                     <template x-if="noVexModal.loading">
-                        <tr><td colspan="6" class="px-6 py-8 text-center text-slate-600"><i class="fas fa-spinner fa-spin mr-2"></i>Carregando...</td></tr>
+                        <tr><td colspan="6" class="px-6 py-8 text-center text-slate-600"><i class="fas fa-spinner fa-spin mr-2"></i>{% trans "Carregando..." %}</td></tr>
                     </template>
                     <template x-for="v in noVexModal.vulns" :key="v.id">
                         <tr class="hover:bg-slate-800/30 transition">
@@ -3920,44 +4767,6 @@ function closeGraph() {
                         <th class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Ransomware</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-800">
-                    <template x-if="criticalExploitModal.loading">
-                        <tr><td colspan="6" class="px-6 py-8 text-center text-slate-600"><i class="fas fa-spinner fa-spin mr-2"></i>Carregando...</td></tr>
-                    </template>
-                    <template x-for="v in criticalExploitModal.vulns" :key="v.id">
-                        <tr class="hover:bg-slate-800/30 transition">
-                            <td class="px-6 py-3 text-xs font-mono text-red-400 font-bold" x-text="v.cve_id"></td>
-                            <td class="px-6 py-3 text-xs text-slate-300" x-text="v.cvss_score || '—'"></td>
-                            <td class="px-6 py-3 text-xs text-slate-400" x-text="v.epss_score ? (v.epss_score * 100).toFixed(1) + '%' : '—'"></td>
-                            <td class="px-6 py-3 text-xs text-slate-300" x-text="`${v.component} ${v.component_version}`"></td>
-                            <td class="px-6 py-3 text-xs text-slate-400" x-text="v.product"></td>
-                            <td class="px-6 py-3">
-                                <span x-show="v.known_ransomware" class="text-[9px] font-black px-2 py-0.5 rounded bg-purple-500/20 text-purple-400">Ransomware</span>
-                                <span x-show="!v.known_ransomware" class="text-slate-600">—</span>
-                            </td>
-                        </tr>
-                    </template>
-                </tbody>
-            </table>
-        </div>
-        <div class="flex items-center justify-between px-8 py-4 border-t border-slate-800">
-            <span class="text-[10px] text-slate-500" x-text="`Página ${criticalExploitModal.page} de ${Math.ceil(criticalExploitModal.total / criticalExploitModal.pageSize)}`"></span>
-            <div class="flex gap-2">
-                <button @click="loadCriticalExploit(criticalExploitModal.page - 1)" :disabled="criticalExploitModal.page <= 1"
-                        class="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 text-xs disabled:opacity-30">
-                    <i class="fas fa-chevron-left"></i>
-                </button>
-                <button @click="loadCriticalExploit(criticalExploitModal.page + 1)" :disabled="criticalExploitModal.page >= Math.ceil(criticalExploitModal.total / criticalExploitModal.pageSize)"
-                        class="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 text-xs disabled:opacity-30">
-                    <i class="fas fa-chevron-right"></i>
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-</body>
-</html>
                 <tbody class="divide-y divide-slate-800">
                     <template x-if="criticalExploitModal.loading">
                         <tr><td colspan="6" class="px-6 py-8 text-center text-slate-600"><i class="fas fa-spinner fa-spin mr-2"></i>Carregando...</td></tr>

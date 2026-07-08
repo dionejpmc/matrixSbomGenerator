@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% trans "Matrix | Gestão de Acesso" %}</title>
+    <title> {{ APP_NAME }} {% trans " | Gestão de Acesso" %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -23,7 +23,7 @@
                 <div class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center">
                     <i class="fas fa-chevron-left text-[10px] text-slate-400 group-hover:text-white transition"></i>
                 </div>
-                <span class="text-lg font-black text-white tracking-tighter italic">MATRIX</span>
+                <span class="text-lg font-black text-white tracking-tighter italic"> {{ APP_NAME }}</span>
             </a>
             <div class="w-px h-5 bg-slate-800"></div>
             <div class="flex items-center gap-2">

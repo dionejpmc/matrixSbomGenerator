@@ -65,6 +65,9 @@ ORDER BY total DESC
 LIMIT 10;
 
 
+#autodependencia problema serio como checar
+MATCH (a:Component)-[:DEPENDS_ON]->(a) RETURN a.name;
+
 
 MATCH (p:Product {name: "Teste V1"})
 SET p.db_id = "1"

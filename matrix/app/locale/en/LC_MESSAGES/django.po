@@ -972,3 +972,291 @@ msgstr "name"
 
 msgid "versão"
 msgstr "version"
+
+
+# --- Scanner de codigo-fonte / bulk edit / duplicidade (adicionado) ---
+msgid "(sem nome)"
+msgstr "(no name)"
+
+msgid "Adicionar arquivos"
+msgstr "Add files"
+
+msgid "Adicionar pasta"
+msgstr "Add folder"
+
+msgid "Ainda há linhas duplicadas não resolvidas. Elas serão salvas como componentes separados. Deseja continuar mesmo assim?"
+msgstr "There are still unresolved duplicate rows. They will be saved as separate components. Continue anyway?"
+
+msgid "Autor"
+msgstr "Author"
+
+msgid "Caminho base (opcional)"
+msgstr "Base path (optional)"
+
+msgid "Componentes raw"
+msgstr "Raw components"
+
+msgid "Criar SBOM a partir de arquivos e pastas"
+msgstr "Create SBOM from files and folders"
+
+msgid "Defina ao menos uma extensão de arquivo antes de escanear."
+msgstr "Define at least one file extension before scanning."
+
+msgid "Depende de"
+msgstr "Depends on"
+
+msgid "Envie a pasta do firmware: os cabeçalhos dos arquivos são lidos e os componentes (nome, versão, PURL, CPE, autor, licença, dependências) são pré-preenchidos para revisão. Repita quantas vezes precisar — cada seleção adiciona ao mesmo SBOM."
+msgstr "Upload the firmware folder: file headers are read and components (name, version, PURL, CPE, author, license, dependencies) are pre-filled for review. Repeat as many times as needed — each selection adds to the same SBOM."
+
+msgid "Erro ao enviar arquivos para o scanner."
+msgstr "Error sending files to the scanner."
+
+msgid "Erro ao escanear arquivos."
+msgstr "Error scanning files."
+
+msgid "Escaneando arquivos..."
+msgstr "Scanning files..."
+
+msgid "Escaneando..."
+msgstr "Scanning..."
+
+msgid "Escanear mais arquivos"
+msgstr "Scan more files"
+
+msgid "Escanear pastas e arquivos"
+msgstr "Scan folders and files"
+
+msgid "Extensões a escanear"
+msgstr "Extensions to scan"
+
+msgid "Fornecedor"
+msgstr "Supplier"
+
+msgid "Mostra apenas componentes e suas dependências, sem vulnerabilidades"
+msgstr "Shows only components and their dependencies, without vulnerabilities"
+
+msgid "Navegadores não expõem o caminho absoluto; informe-o para compor a coluna de pasta."
+msgstr "Browsers do not expose the absolute path; provide it to build the folder column."
+
+msgid "Nenhum arquivo novo: todos foram filtrados pela extensão ou já escaneados."
+msgstr "No new files: all were filtered by extension or already scanned."
+
+msgid "Nenhum arquivo selecionado."
+msgstr "No file selected."
+
+msgid "Nenhum componente detectado. Escaneie mais arquivos ou clique em \"+ Adicionar linha\"."
+msgstr "No components detected. Scan more files or click \"+ Add row\"."
+
+msgid "Nome repetido em caminhos diferentes — decida qual manter"
+msgstr "Name repeated in different paths — decide which to keep"
+
+msgid "Origem"
+msgstr "Origin"
+
+msgid "Passo 1 — Informar produto e escanear os arquivos"
+msgstr "Step 1 — Enter product and scan the files"
+
+msgid "Passo 2 — Revisar e completar os componentes detectados"
+msgstr "Step 2 — Review and complete the detected components"
+
+msgid "Pasta"
+msgstr "Folder"
+
+msgid "Preencher em massa"
+msgstr "Bulk fill"
+
+msgid "Preencher manualmente"
+msgstr "Fill manually"
+
+msgid "Recomendado"
+msgstr "Recommended"
+
+msgid "Scan de Arquivo/Diretorio"
+msgstr "File/Directory Scan"
+
+msgid "Selecionar linhas sem autor"
+msgstr "Select rows without author"
+
+msgid "Selecionar linhas sem fornecedor"
+msgstr "Select rows without supplier"
+
+msgid "Selecionar linhas sem versão"
+msgstr "Select rows without version"
+
+msgid "Selecionar todos"
+msgstr "Select all"
+
+msgid "Somente arquivos com estas extensões são enviados e escaneados."
+msgstr "Only files with these extensions are uploaded and scanned."
+
+msgid "Ver componentes escaneados"
+msgstr "View scanned components"
+
+msgid "Ver tabela"
+msgstr "View table"
+
+msgid "aplicar"
+msgstr "apply"
+
+msgid "arquivos escaneados"
+msgstr "files scanned"
+
+msgid "autor"
+msgstr "author"
+
+msgid "campos pendentes destacados em âmbar"
+msgstr "pending fields highlighted in amber"
+
+msgid "componente(s) já escaneado(s) — escaneie mais pastas para somar, ou volte à tabela para revisar."
+msgstr "component(s) already scanned — scan more folders to add, or go back to the table to review."
+
+msgid "dependências"
+msgstr "dependencies"
+
+msgid "descrição"
+msgstr "description"
+
+msgid "dup"
+msgstr "dup"
+
+msgid "fornecedor"
+msgstr "supplier"
+
+msgid "já tinha valor (mantido)"
+msgstr "already had a value (kept)"
+
+msgid "limpar seleção"
+msgstr "clear selection"
+
+msgid "linha(s) duplicada(s) — decida qual manter"
+msgstr "duplicate row(s) — decide which to keep"
+
+msgid "manual"
+msgstr "manual"
+
+msgid "pasta"
+msgstr "folder"
+
+msgid "pendente"
+msgstr "pending"
+
+msgid "preenchido(s)"
+msgstr "filled"
+
+msgid "scan"
+msgstr "scan"
+
+msgid "selecionado(s)"
+msgstr "selected"
+
+
+# --- Textos soltos HTML (adicionado) ---
+msgid "Distribuição por Severidade"
+msgstr "Severity Distribution"
+
+msgid "Sem dados de vulnerabilidade."
+msgstr "No vulnerability data."
+
+msgid "Comparar Versões"
+msgstr "Compare Versions"
+
+msgid "Detalhes da Vulnerabilidade"
+msgstr "Vulnerability Details"
+
+msgid "Compare qualquer SBOM da sua BU"
+msgstr "Compare any SBOM from your BU"
+
+msgid "SBOM para Comparar"
+msgstr "SBOM to Compare"
+
+msgid "CVEs Novos"
+msgstr "New CVEs"
+
+msgid "Nenhum componente adicionado."
+msgstr "No components added."
+
+msgid "Nenhum componente removido."
+msgstr "No components removed."
+
+msgid "Nenhum componente atualizado."
+msgstr "No components updated."
+
+msgid "Nenhum CVE novo."
+msgstr "No new CVEs."
+
+msgid "Nenhum CVE resolvido."
+msgstr "No resolved CVEs."
+
+msgid "Selecione duas versões e clique em Comparar"
+msgstr "Select two versions and click Compare"
+
+
+# --- Strings JS visíveis (adicionado) ---
+msgid "Nenhum resultado para este filtro."
+msgstr "No results for this filter."
+
+msgid "Erro na requisição."
+msgstr "Request error."
+
+msgid "Nome do produto obrigatório."
+msgstr "Product name is required."
+
+
+# --- Interface + severidades exibidas (adicionado) ---
+msgid "Sem VEX"
+msgstr "No VEX"
+
+msgid "Diff entre SBOMs"
+msgstr "Diff between SBOMs"
+
+msgid "Severidade"
+msgstr "Severity"
+
+msgid "Adicionados"
+msgstr "Added"
+
+msgid "Removidos"
+msgstr "Removed"
+
+msgid "Atualizados"
+msgstr "Updated"
+
+msgid "CVEs Resolvidos"
+msgstr "Resolved CVEs"
+
+msgid "Resolvido"
+msgstr "Resolved"
+
+msgid "SBOM Base"
+msgstr "Base SBOM"
+
+msgid "Selecione..."
+msgstr "Select..."
+
+msgid "prob. 30d"
+msgstr "prob. 30d"
+
+msgid "Exploit"
+msgstr "Exploit"
+
+msgid "Scan de Firmware"
+msgstr "Firmware Scan"
+
+msgid "Critical"
+msgstr "Critical"
+
+msgid "High"
+msgstr "High"
+
+msgid "Medium"
+msgstr "Medium"
+
+msgid "Low"
+msgstr "Low"
+
+msgid "Negligible"
+msgstr "Negligible"
+
+msgid "Unknown"
+msgstr "Unknown"
+

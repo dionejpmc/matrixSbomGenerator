@@ -31,6 +31,7 @@ from apps.accounts.user_management import (
     api_user_deactivate, api_user_activate, api_bu_list,
 )
 from apps.organizations.views import api_bu_list_create, api_bu_delete
+from apps.feedback import urls as feedback_urls
 
 urlpatterns = [
     path('i18n/', include('django.conf.urls.i18n')),
@@ -59,4 +60,7 @@ urlpatterns = [
    
     path('accounts/api/users/create/', api_user_create, name='api_user_create'),
     path('accounts/change-password/', force_password_change_view, name='force_password_change'),
+
+
+    path('feedback/', include('apps.feedback.urls')),
 ]

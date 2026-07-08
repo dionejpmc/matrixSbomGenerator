@@ -1,3 +1,24 @@
+"""
+sbom_tasks.py — Processamento de SBOM originado de ARQUIVO .json (CycloneDX) / RAUC.
+
+────────────────────────────────────────────────────────────────────────────
+ESCOPO DESTE ARQUIVO (ver par: tasks/scan_source_tasks.py)
+────────────────────────────────────────────────────────────────────────────
+Esta task trata SBOMs que chegam como um CycloneDX real: componentes com
+purl/versão reais e uma seção `dependencies` nativa. As relações DEPENDS_ON são
+montadas a partir dessa seção, cruzando purls (name@version via _parse_purl).
+
+O fluxo do SCAN DE CÓDIGO-FONTE (firmware bare-metal, componentes first-party
+sem versão/purl, dependências vindas dos #include em Component.depends) é
+tratado SEPARADAMENTE por tasks/scan_source_tasks.py::process_scan_source_task.
+Essa separação é intencional: mantém este fluxo .json/RAUC estável e sem as
+condicionais que o caso first-party exigiria. NÃO reúna os dois aqui.
+
+A infraestrutura de vulnerabilidade (run_grype_scan, run_ingestion) vive em
+tasks/scan_tasks.py e é COMPARTILHADA pelos dois fluxos.
+────────────────────────────────────────────────────────────────────────────
+"""
+
 from celery import shared_task, chain
 from django.db import transaction
 from django.conf import settings

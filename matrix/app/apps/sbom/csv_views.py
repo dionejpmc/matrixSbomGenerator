@@ -24,6 +24,21 @@ from core.mongo import log_audit, log_error
 logger = logging.getLogger(__name__)
 
 
+# Conjunto pequeno de SPDX IDs comuns em firmware; texto fora disso vai como
+# licenses[].license.name (texto livre) em vez de .id, para não quebrar
+# validadores CycloneDX que exigem SPDX oficial no campo id.
+_SPDX_IDS = {
+    'MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'Zlib',
+    'GPL-2.0-only', 'GPL-2.0-or-later', 'GPL-3.0-only', 'GPL-3.0-or-later',
+    'LGPL-2.1-only', 'LGPL-2.1-or-later', 'LGPL-3.0-only', 'MPL-2.0',
+    'BSD-3-Clause-Clear', 'Unlicense', 'CC0-1.0',
+}
+
+
+def _looks_like_spdx(value: str) -> bool:
+    return (value or '').strip() in _SPDX_IDS
+
+
 # ─────────────────────────────────────────────────────────────
 # TEMPLATE CSV DOWNLOAD
 # ─────────────────────────────────────────────────────────────
@@ -180,27 +195,60 @@ def api_save_manual_sbom(request):
             uploaded_by=request.user,
         )
 
-        # Fetch existing components to avoid duplicates
+        # Componentes já existentes com versão real entram na dedup.
+        # 'unknown' NÃO deduplica (cada arquivo/entrada é único).
         existing = set(
             Component.objects.filter(product=product)
+            .exclude(version='unknown')
             .values_list('name', 'version')
         )
 
+        def g(d, *keys):
+            """Primeiro valor não-vazio entre as chaves, com strip."""
+            for k in keys:
+                v = (d.get(k) or '').strip()
+                if v:
+                    return v
+            return ''
+
         to_create = []
+        seen = set()
         for comp_data in components:
-            name = comp_data.get('name', '').strip()
-            version = comp_data.get('version', '').strip()
-            if not name or not version:
+            name = g(comp_data, 'name')
+            if not name:
                 continue
-            if (name, version) in existing:
-                continue
+
+            version = g(comp_data, 'version') or 'unknown'
+            scope = g(comp_data, 'scope') or 'third_party'
+            ctype = g(comp_data, 'type') or 'library'
+
+            # dedup só para versões reais; 'unknown' sempre grava
+            if version != 'unknown':
+                key = (name, version)
+                if key in existing or key in seen:
+                    continue
+                seen.add(key)
+
+            # purl automático apenas para libs de terceiros com versão real
+            purl = g(comp_data, 'purl')
+            if not purl and version != 'unknown' and scope != 'first_party':
+                purl = f"pkg:generic/{name}@{version}"
+
             to_create.append(Component(
                 product=product,
                 name=name,
                 version=version,
-                type=comp_data.get('type', 'library') or 'library',
-                purl=comp_data.get('purl') or f"pkg:generic/{name}@{version}",
-                cpe=comp_data.get('cpe') or None,
+                type=ctype,
+                purl=purl or None,
+                cpe=g(comp_data, 'cpe') or None,
+                license=g(comp_data, 'license') or None,
+                supplier=g(comp_data, 'supplier') or None,
+                copyright=g(comp_data, 'copyright') or None,
+                author=g(comp_data, 'author') or None,
+                description=g(comp_data, 'description') or None,
+                depends=g(comp_data, 'depends') or None,
+                folder=g(comp_data, 'folder') or None,
+                scope=scope,
             ))
 
         Component.objects.bulk_create(to_create, ignore_conflicts=True)
@@ -318,10 +366,39 @@ def api_approve_sbom(request, upload_id):
                 'type': comp.type or 'library',
                 'name': comp.name,
                 'version': comp.version,
-                'purl': comp.purl or f'pkg:generic/{comp.name}@{comp.version}',
             }
+
+            # purl: identificador para casar CVE. Não gerar para first-party
+            # nem para versão desconhecida (evita falso positivo no Grype).
+            purl = comp.purl
+            if not purl and comp.version and comp.version != 'unknown' and comp.scope != 'first_party':
+                purl = f'pkg:generic/{comp.name}@{comp.version}'
+            if purl:
+                entry['purl'] = purl
             if comp.cpe:
                 entry['cpe'] = comp.cpe
+            if getattr(comp, 'author', None):
+                entry['author'] = comp.author
+            if getattr(comp, 'description', None):
+                entry['description'] = comp.description
+            if getattr(comp, 'supplier', None):
+                entry['supplier'] = {'name': comp.supplier}
+            if getattr(comp, 'copyright', None):
+                entry['copyright'] = comp.copyright
+            if comp.license:
+                lic_key = 'id' if _looks_like_spdx(comp.license) else 'name'
+                entry['licenses'] = [{'license': {lic_key: comp.license}}]
+
+            props = []
+            if getattr(comp, 'scope', None):
+                props.append({'name': 'matrix:scope', 'value': comp.scope})
+            if getattr(comp, 'depends', None):
+                props.append({'name': 'matrix:includes', 'value': comp.depends})
+            if getattr(comp, 'folder', None):
+                props.append({'name': 'matrix:folder', 'value': comp.folder})
+            if props:
+                entry['properties'] = props
+
             cyclonedx['components'].append(entry)
 
         sbom_content = json.dumps(cyclonedx, indent=2, ensure_ascii=False).encode('utf-8')
@@ -356,9 +433,12 @@ def api_approve_sbom(request, upload_id):
         upload.reviewed_at = timezone.now()
         upload.save()
 
-        # Dispara pipeline normal
-        from tasks.sbom_tasks import process_sbom_task
-        process_sbom_task.delay(str(upload.id))
+        # Dispara o pipeline do SCAN DE CÓDIGO-FONTE (task dedicada — ver
+        # tasks/scan_source_tasks.py para a razão da separação). NÃO usar
+        # process_sbom_task aqui: aquela é para SBOM .json/RAUC e monta o grafo
+        # a partir da seção `dependencies` do CycloneDX, que este fluxo não tem.
+        from tasks.scan_source_tasks import process_scan_source_task
+        process_scan_source_task.delay(str(upload.id))
 
         log_audit(request.user, 'CSV_SBOM_APPROVED',
                   upload_id=upload_id,

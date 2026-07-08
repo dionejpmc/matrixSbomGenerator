@@ -1,3 +1,56 @@
+"""
+apps/sbom/views.py — Views (API JSON) do app SBOM do Matrix.
+
+────────────────────────────────────────────────────────────────────────────
+CONTEÚDO DESTE ARQUIVO
+────────────────────────────────────────────────────────────────────────────
+Reúne os endpoints de API (retornam JSON) que sustentam o dashboard de SBOM:
+consulta de componentes, grafo de dependências/vulnerabilidades no Neo4j,
+gestão de VEX, upload de SBOM, métricas e comparação entre uploads.
+
+VEX (Vulnerability Exploitability eXchange)
+  • api_vex_get(vulnerability_id)        — retorna o VEX mais recente de uma vuln.
+  • api_vex_declare(vulnerability_id)    — cria/atualiza um statement VEX [operador].
+  • api_vex_export(product_id)           — exporta CycloneDX 1.5 + VEX (alinhado ao CRA).
+
+Upload / ciclo de vida do SBOM
+  • upload_sbom_view()                   — recebe upload de SBOM .json [operador].
+  • api_deactivate_product(product_id)   — desativa um produto [administrador].
+  • api_download_cyclonedx(product_id)   — baixa o CycloneDX consolidado do produto.
+  • api_scan_status(product_id)          — status do pipeline de scan (polling do front).
+
+Componentes e vulnerabilidades
+  • api_components(product_id)           — lista componentes do produto (+ status VEX).
+  • api_cve_detail(cve_id)               — detalhe de uma CVE e componentes afetados.
+  • api_vulns_no_vex()                   — vulnerabilidades sem declaração VEX (paginado).
+  • api_vulns_critical_exploit()         — vulns críticas com exploit conhecido.
+  • api_component_products()             — produtos que contêm um componente (name+version).
+
+Grafo (Neo4j)
+  • api_product_graph(product_id)        — grafo do produto para o Cytoscape. Modos:
+        - padrão            → produto + TODOS os componentes + CVEs + DEPENDS_ON;
+        - ?severity=/?cve=  → foca nos componentes que casam o filtro de vulnerabilidade;
+        - ?raw=true         → modo estrutural: só componentes + dependências, SEM CVE
+                              (mais leve; ideal para firmware sem vulnerabilidades).
+
+Métricas e comparação
+  • api_bu_stats()                       — métricas por Business Unit (cards do dashboard).
+  • api_diff_uploads(product_id)         — lista uploads comparáveis de um produto.
+  • api_sbom_diff()                      — diff entre dois uploads (componentes/vulns).
+
+DEPENDÊNCIAS EXTERNAS
+  • PostgreSQL  — modelos SbomUpload, Component, Vulnerability, VexStatement, Product.
+  • Neo4j       — grafo (Product)-[:HAS_COMPONENT]->(Component)-[:DEPENDS_ON]->(...) e
+                  (Component)-[:HAS_VULNERABILITY]->(CVE). Conexão via NEO4J_URI (env).
+  • MongoDB     — auditoria (log_audit / log_error) em core.mongo.
+  • Celery      — process_sbom_task dispara o pipeline de vulnerabilidade.
+
+NOTA sobre Neo4j: a conexão usa NEO4J_URI do ambiente (bolt://neo4j:7687). Não
+cravar host na mão nas views — versões antigas usavam "matrix-graph", host que
+não existe mais e fazia o grafo retornar vazio.
+────────────────────────────────────────────────────────────────────────────
+"""
+
 import os
 import hashlib
 import traceback
@@ -16,14 +69,21 @@ from apps.accounts.permissions import administrador_required, operador_required
 from core.mongo import log_audit, log_error
 from .models import VexStatement
 
- 
+
 
 UPLOAD_DIR = "/data/uploads"
-NEO4J_URI      = os.getenv("NEO4J_URI", "bolt://matrix-graph:7687")
+NEO4J_URI      = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
 NEO4J_USER_VAR = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "outra_senha_forte_aqui")
 
 logger = logging.getLogger(__name__)
+
+
+def _neo4j_driver():
+    """Cria um driver Neo4j a partir das credenciais do ambiente.
+    Ponto único de conexão — todas as views que falam com o grafo usam este
+    helper, em vez de reler as envs ou (pior) cravar o host na mão."""
+    return GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER_VAR, NEO4J_PASSWORD))
 
  
 @login_required
@@ -521,7 +581,7 @@ def api_deactivate_product(request, product_id):
 
     # Mark as inactive in Neo4j as well
     try:
-        driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER_VAR, NEO4J_PASSWORD))
+        driver = _neo4j_driver()
         with driver.session() as session:
             session.run("""
                 MATCH (p:Product {db_id: toInteger($product_id)})
@@ -556,13 +616,9 @@ def api_cve_detail(request, cve_id):
         version=vuln.component.version
     ).values('product').distinct().count()
 
-    uri = "bolt://matrix-graph:7687"
-    user = "neo4j"
-    password = "outra_senha_forte_aqui"
-
     transitive = []
     try:
-        driver = GraphDatabase.driver(uri, auth=(user, password))
+        driver = _neo4j_driver()
         with driver.session() as session:
             result = session.run("""
                 MATCH (a:Component)-[:DEPENDS_ON*1..]->(b:Component)-[:HAS_VULNERABILITY]->(v:CVE {cveId: $cve_id})
@@ -591,18 +647,21 @@ def api_cve_detail(request, cve_id):
 
 @login_required
 def api_product_graph(request, product_id):
-    import uuid as uuid_module
+    """Monta o grafo do produto para o Cytoscape (nós + arestas).
 
-    uri = "bolt://matrix-graph:7687"
-    user = "neo4j"
-    password = "outra_senha_forte_aqui"
+    Modos (via query string):
+      • padrão            → produto + TODOS os componentes + CVEs + DEPENDS_ON.
+      • ?severity=/?cve=  → foca nos componentes que casam o filtro de vuln.
+      • ?raw=true         → só componentes + dependências, SEM CVE (mais leve).
+    """
+    import uuid as uuid_module
 
     severity_filter = request.GET.getlist('severity')
     cve_filter = request.GET.get('cve', '').strip().upper()
-    show_all = request.GET.get('all', 'false') == 'true'
+    raw_mode = request.GET.get('raw', 'false') == 'true'
 
     try:
-        driver = GraphDatabase.driver(uri, auth=(user, password))
+        driver = _neo4j_driver()
         nodes = []
         edges = []
         seen_nodes = set()
@@ -619,19 +678,22 @@ def api_product_graph(request, product_id):
                 vuln_filter_clause = "AND v.severity IN $severities"
                 params["severities"] = [s.upper() for s in severity_filter]
 
-            if show_all:
-                query = f"""
+            has_vuln_filter = bool(cve_filter or severity_filter)
+
+            if raw_mode:
+                # Modo estrutural: só componentes, sem tocar em vulnerabilidades.
+                # Mais leve — não executa o MATCH de CVE.
+                query = """
                 MATCH (p:Product)
                 WHERE p.db_id = toInteger($id) OR p.name = $id
                 OPTIONAL MATCH (p)-[:HAS_COMPONENT]->(c:Component)
-                OPTIONAL MATCH (c)-[:HAS_VULNERABILITY]->(v:CVE)
-                WHERE v IS NULL OR true {vuln_filter_clause}
                 RETURN
                     elementId(p) as prod_id, p.name as prod_name,
                     elementId(c) as comp_id, c.name as comp_name, c.version as comp_version,
-                    elementId(v) as vuln_id, v.cveId as vuln_cve, v.severity as vuln_severity
+                    null as vuln_id, null as vuln_cve, null as vuln_severity
                 """
-            else:
+            elif has_vuln_filter:
+                # Com filtro de vuln: foca nos componentes que têm CVE casando.
                 query = f"""
                 MATCH (p:Product)
                 WHERE p.db_id = toInteger($id) OR p.name = $id
@@ -642,8 +704,27 @@ def api_product_graph(request, product_id):
                     elementId(c) as comp_id, c.name as comp_name, c.version as comp_version,
                     elementId(v) as vuln_id, v.cveId as vuln_cve, v.severity as vuln_severity
                 """
+            else:
+                # Sem filtro: TODOS os componentes (mesmo sem CVE) + suas CVEs.
+                query = """
+                MATCH (p:Product)
+                WHERE p.db_id = toInteger($id) OR p.name = $id
+                OPTIONAL MATCH (p)-[:HAS_COMPONENT]->(c:Component)
+                OPTIONAL MATCH (c)-[:HAS_VULNERABILITY]->(v:CVE)
+                RETURN
+                    elementId(p) as prod_id, p.name as prod_name,
+                    elementId(c) as comp_id, c.name as comp_name, c.version as comp_version,
+                    elementId(v) as vuln_id, v.cveId as vuln_cve, v.severity as vuln_severity
+                """
 
             records = list(session.run(query, **params))
+
+            # Relações de dependência entre componentes (DEPENDS_ON) do produto.
+            dep_records = list(session.run("""
+                MATCH (p:Product)-[:HAS_COMPONENT]->(a:Component)-[:DEPENDS_ON]->(b:Component)
+                WHERE p.db_id = toInteger($id) OR p.name = $id
+                RETURN elementId(a) as src_id, elementId(b) as tgt_id
+            """, id=str(product_id)))
 
         driver.close()
 
@@ -680,6 +761,16 @@ def api_product_graph(request, product_id):
                 edge_key = (comp_id, vuln_id)
                 if edge_key not in seen_edges:
                     edges.append({"data": {"id": str(uuid_module.uuid4()), "source": comp_id, "target": vuln_id, "label": "HAS_VULNERABILITY"}})
+                    seen_edges.add(edge_key)
+
+        # Arestas de dependência entre componentes (DEPENDS_ON). Só liga nós que
+        # já entraram no grafo (componentes deste produto).
+        for dep in dep_records:
+            src_id, tgt_id = dep["src_id"], dep["tgt_id"]
+            if src_id in seen_nodes and tgt_id in seen_nodes:
+                edge_key = (src_id, tgt_id, "DEPENDS_ON")
+                if edge_key not in seen_edges:
+                    edges.append({"data": {"id": str(uuid_module.uuid4()), "source": src_id, "target": tgt_id, "label": "DEPENDS_ON"}})
                     seen_edges.add(edge_key)
 
         return JsonResponse({"nodes": nodes, "edges": edges})

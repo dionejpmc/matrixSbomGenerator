@@ -33,7 +33,8 @@ SESSION_COOKIE_SAMESITE = 'Lax'          # Protects against cross-site CSRF
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True   # Session ends when the browser closes
 SESSION_COOKIE_AGE = 3600                # Maximum session lifetime: 1 hour
 
-
+# Nome da aplicação (centralizado — trocar aqui reflete em todas as telas)
+APP_NAME = "X"
 
 # File storage path inside the container
 MEDIA_ROOT = '/data/uploads'
@@ -45,8 +46,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8000",
     "https://localhost",
     "http://localhost",
-    "https://cuddly-pancake-j99jw657qj35vwx-8000.app.github.dev",
-    "http://cuddly-pancake-j99jw657qj35vwx-8000.app.github.dev",
+    "https://super-giggle-466j9476g43jwww-8000.app.github.dev/",
+    "https://super-giggle-466j9476g43jwww-8000.app.github.dev/",
 ]
 
 # Application definition
@@ -69,6 +70,7 @@ INSTALLED_APPS = [
     'apps.hunting',
     'apps.hbom',
     'apps.archive',
+    'apps.feedback',
 ]
 
 MIDDLEWARE = [
@@ -104,6 +106,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'core.context_processors.app_branding',
+                
             ],
         },
     },

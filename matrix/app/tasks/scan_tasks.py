@@ -1,3 +1,19 @@
+"""
+scan_tasks.py — Infraestrutura COMPARTILHADA de scan de vulnerabilidade.
+
+────────────────────────────────────────────────────────────────────────────
+run_grype_scan e run_ingestion são reutilizados pelos DOIS fluxos de SBOM:
+  • tasks/sbom_tasks.py::process_sbom_task            (SBOM .json / RAUC)
+  • tasks/scan_source_tasks.py::process_scan_source_task  (scan de código-fonte)
+
+Ambos, após montarem os componentes e o grafo de dependências à sua maneira,
+chamam run_grype_scan → run_ingestion daqui. Esta lógica (rodar o Grype sobre
+o SBOM, ingerir CVEs, criar HAS_VULNERABILITY no Neo4j) é idêntica para os dois
+e por isso NÃO é duplicada. Ao alterar Grype/ingestão, altere AQUI — este é o
+único lugar; a mudança vale para os dois fluxos automaticamente.
+────────────────────────────────────────────────────────────────────────────
+"""
+
 import subprocess
 import os
 import json

@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y gettext && rm -rf /var/lib/apt/lists/*
+
 RUN curl -sSfL https://get.anchore.io/grype | sh -s -- -b /usr/local/bin
 RUN curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin
 

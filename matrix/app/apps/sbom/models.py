@@ -5,6 +5,11 @@ import hashlib
 from django.utils import timezone  # <--- Adicione esta linha
 
 class Component(models.Model):
+    SCOPE_CHOICES = [
+        ('third_party', 'Terceiros'),
+        ('first_party', 'Primeira parte'),
+    ]
+
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='components')
     name = models.CharField(max_length=255)
     version = models.CharField(max_length=100)
@@ -13,9 +18,17 @@ class Component(models.Model):
     cpe = models.CharField(max_length=500, blank=True, null=True)
     license = models.CharField(max_length=255, blank=True, null=True)
 
+    # campos adicionais extraídos pelo scanner de código-fonte
+    supplier = models.CharField(max_length=255, blank=True, null=True)
+    copyright = models.CharField(max_length=500, blank=True, null=True)
+    author = models.CharField(max_length=255, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+    depends = models.TextField(blank=True, null=True)
+    folder = models.CharField(max_length=1000, blank=True, null=True)
+    scope = models.CharField(max_length=20, choices=SCOPE_CHOICES, default='third_party', blank=True)
+
     def __str__(self):
         return f"{self.name}@{self.version}"
-    
     
 def upload_to_uuid(instance, filename):
     ext = filename.split('.')[-1]
