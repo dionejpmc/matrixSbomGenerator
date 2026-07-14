@@ -63,6 +63,8 @@ class Component:
     folder: str = ""
     scope: str = "third_party"       # third_party | first_party
     origin: str = "auto"
+    group: str = ""                  # \ingroup do cabeçalho (vira group no CycloneDX)
+    module: str = ""                 # componente lógico ao qual o arquivo pertence
     duplicate: bool = False          # nome repetido em caminho diferente
     duplicate_group: str = ""        # chave do grupo de duplicidade (o nome)
     # interno: True quando o arquivo escaneado pertence ao componente
@@ -248,8 +250,10 @@ def _collect_tags(header: str) -> dict:
             tag = m.group(1).lower()
             current = tag
             fields.setdefault(tag, [])
-            if m.group(2).strip():
-                fields[tag].append(m.group(2).strip())
+            # remove pontuação que separa a tag do valor: "\\author: X" -> "X"
+            val = m.group(2).strip().lstrip(":-").strip()
+            if val:
+                fields[tag].append(val)
         elif current and line:
             fields[current].append(line)  # continuação da tag anterior
         else:
@@ -282,6 +286,33 @@ def parse_header_meta(text: str) -> dict:
     brief, note = get("brief"), get("note")
     description = " — ".join(p for p in (brief, note) if p)
 
+    # \ingroup recebe apenas o nome do grupo (um token). Se o parser acumulou
+    # continuação de linhas seguintes, fica só o primeiro token.
+    group = get("ingroup", "defgroup", "addtogroup")
+    if group:
+        group = group.split()[0]
+
+    # Fallback (estilo WEG): quando não há \brief/\note, a descrição é a
+    # primeira linha de texto livre do cabeçalho — a que fica logo abaixo do
+    # \file, sem tag. Ignora réguas (////, ----), tags e a própria linha do \file.
+    if not description:
+        file_seen = False
+        for raw in header.splitlines():
+            line = _strip_prefix(raw).strip()
+            if not line:
+                continue
+            if _DOX_TAG_RE.match(line):
+                # marca quando passamos pela linha do \file, para pegar o texto seguinte
+                if line.lstrip("\\@").lower().startswith("file"):
+                    file_seen = True
+                continue
+            if re.fullmatch(r"[-=*/#_.]{3,}", line):
+                continue  # régua
+            if not file_seen:
+                continue  # texto antes do \file: ignora
+            description = line
+            break
+
     # versão do cabeçalho: \version 1.0.1  (vazio se ausente)
     version = ""
     vm = re.match(r"v?([\d]+(?:\.[\d]+)*)", get("version"))
@@ -308,6 +339,7 @@ def parse_header_meta(text: str) -> dict:
         "description": description,
         "license": license_id,
         "copyright": copyright_txt,
+        "group": group,
     }
 
 
@@ -401,13 +433,16 @@ def scan_file(rel_path: str, data: bytes, folder: str, emit_first_party: bool = 
     # metadados do cabeçalho (inclui \version do arquivo)
     meta = parse_header_meta(text)
     depends = extract_includes(text)
-    has_meta = any(meta[k] for k in ("version", "author", "description", "license", "copyright"))
+    has_meta = any(meta[k] for k in ("version", "author", "description", "license", "copyright", "group"))
+
+    # nome-base do arquivo, sem extensão, é o componente lógico candidato:
+    # DAC.c e DAC.h -> módulo "DAC". O par define o componente (BSI §3.2.2).
+    base = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
 
     # 3) arquivo de primeira parte: quando nada de terceiros "dono" foi
     #    detectado, o próprio arquivo vira um componente type=file. Nome COM
-    #    extensão (ADC.c e ADC.h são arquivos distintos — não são duplicidade);
-    #    caminho completo no folder. A versão vem do \version do cabeçalho
-    #    (vazia se ausente).
+    #    extensão; caminho completo no folder. A versão vem do \version do
+    #    cabeçalho (vazia se ausente). O módulo (componente lógico) é o nome-base.
     owns_any = any(c._owns_file for c in found)
     if emit_first_party and not owns_any and (has_meta or True):
         found.append(Component(
@@ -416,6 +451,8 @@ def scan_file(rel_path: str, data: bytes, folder: str, emit_first_party: bool = 
             type="file",
             folder=folder,
             scope="first_party",
+            module=base,
+            group=meta["group"],
             _owns_file=True,
         ))
 
@@ -427,6 +464,7 @@ def scan_file(rel_path: str, data: bytes, folder: str, emit_first_party: bool = 
             comp.description = comp.description or meta["description"]
             comp.license = comp.license or meta["license"]
             comp.copyright = comp.copyright or meta["copyright"]
+            comp.group = comp.group or meta["group"]
             comp.depends = comp.depends or depends
 
     return found
@@ -525,3 +563,87 @@ def _full_folder(rel_path: str, base_path: str) -> str:
     sep = "\\" if "\\" in base_path else "/"
     rel = rel_path.replace("/", sep).replace("\\", sep)
     return base_path.rstrip("/\\") + sep + rel
+
+
+# ---------------------------------------------------------------------------
+# Componentes lógicos (BSI TR-03183-2 §3.2.2)
+#
+# A partir dos arquivos escaneados, deriva os COMPONENTES LÓGICOS que irão
+# para o SBOM. Regra do par: DAC.c + DAC.h -> componente "DAC". Os dados
+# (versão, autor, licença, grupo) vêm do .c, com fallback no .h.
+#
+# Headers genéricos (types.h, config.h, ...) e arquivos órfãos (um .h sem .c,
+# um .c sem .h) NÃO viram componente automaticamente: entram como "não
+# atribuídos" para o analista decidir na revisão. Terceiros permanecem como
+# componentes autônomos.
+# ---------------------------------------------------------------------------
+
+# Nomes-base que não viram componente sozinhos (headers utilitários comuns).
+# Só se aplica a órfãos (sem .c par); um DAC.c+DAC.h sempre forma componente.
+_GENERIC_BASENAMES = {
+    "types", "type", "common", "config", "defines", "define", "platform",
+    "global", "globals", "macros", "const", "constants", "typedefine",
+    "stdafx", "version", "settings", "conf",
+}
+
+_CODE_EXTS = {"c", "cc", "cpp", "cxx"}
+_HEADER_EXTS = {"h", "hh", "hpp", "hxx"}
+
+
+def _ext_of(name: str) -> str:
+    return name.rsplit(".", 1)[1].lower() if "." in name else ""
+
+
+def derive_logical_components(files: list[Component]) -> dict:
+    """Agrupa arquivos em componentes lógicos pela regra do par.
+
+    Retorna {'components': [...], 'unassigned': [...]} onde:
+      • components  = componentes lógicos inferidos (para o SBOM), cada um com
+                      os arquivos que o compõem em `_members`;
+      • unassigned  = arquivos que não formaram componente (genéricos/órfãos),
+                      para a fila de revisão.
+    """
+    # agrupa por (módulo, pasta-do-módulo). A pasta entra na chave para não
+    # fundir DAC de módulos diferentes (o caso das cópias homônimas).
+    groups: dict[tuple, list] = {}
+    for f in files:
+        base = f.module or (f.name.rsplit(".", 1)[0] if "." in f.name else f.name)
+        # pasta que contém o arquivo (sem o nome do arquivo)
+        folder = (f.folder or "").replace("\\", "/")
+        dirpart = folder.rsplit("/", 1)[0] if "/" in folder else ""
+        groups.setdefault((base.lower(), dirpart), []).append(f)
+
+    components, unassigned = [], []
+    for (base_key, dirpart), members in groups.items():
+        exts = {_ext_of(m.name) for m in members}
+        has_code = bool(exts & _CODE_EXTS)
+        has_header = bool(exts & _HEADER_EXTS)
+        display = members[0].module or members[0].name.rsplit(".", 1)[0]
+
+        # regra do par: forma componente se há implementação (.c) — com ou sem .h.
+        # header órfão (.h sem .c) só vira componente se NÃO for nome genérico.
+        is_generic_orphan = (not has_code) and (base_key in _GENERIC_BASENAMES)
+
+        if has_code or (has_header and not is_generic_orphan):
+            # fonte dos dados: o .c (impl) tem prioridade; senão o .h.
+            impl = next((m for m in members if _ext_of(m.name) in _CODE_EXTS), None)
+            src = impl or members[0]
+            comp = Component(
+                name=display,
+                version=src.version,
+                type="library",
+                scope="first_party",
+                author=src.author,
+                license=src.license,
+                copyright=src.copyright,
+                description=src.description,
+                group=src.group or next((m.group for m in members if m.group), ""),
+                folder=dirpart,
+                origin="auto",
+            )
+            comp._members = members  # arquivos que compõem (para o grafo/expansão)
+            components.append(comp)
+        else:
+            unassigned.extend(members)
+
+    return {"components": components, "unassigned": unassigned}

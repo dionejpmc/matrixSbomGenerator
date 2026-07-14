@@ -188,6 +188,14 @@
             // preenchimento em massa (bulk edit) — só preenche vazios
             bulk: { version: '', author: '', supplier: '' },
             bulkFeedback: null,
+            // ── Componentes lógicos (módulos) — BSI TR-03183-2 §3.2.2 ──
+            // modules: { nomeLogico: {version, creator, license, group, manual, expanded} }
+            modules: {},
+            unassigned: [],            // arquivos que não formaram componente (fila)
+            rows: [],                  // lista plana renderizada na árvore
+            newModuleName: '',         // input de "criar módulo"
+            moduleBulk: { creator: '', license: '', version: '' },
+            moduleBulkFeedback: null,
         },
         uploadModal: { 
             open: false, 
@@ -890,6 +898,9 @@
             scanning: false, scannedFiles: 0, seenKeys: [], progress: null,
             bulk: { version: '', author: '', supplier: '' },
             bulkFeedback: null,
+            modules: {}, unassigned: [], rows: [], newModuleName: '',
+            moduleBulk: { creator: '', license: '', version: '' }, moduleBulkFeedback: null,
+            cdxPreview: null,          // { module, json } — preview CycloneDX de um módulo
         };
     },
 
@@ -928,6 +939,226 @@
         if (dot < 0) return false;
         return this.csvModal.extensions.includes(name.slice(dot).toLowerCase());
     },
+
+    // ════════════════════════════════════════════════════════════════════
+    //  COMPONENTES LÓGICOS (MÓDULOS) — BSI TR-03183-2 §3.2.2
+    //  Um módulo agrupa os arquivos de um componente (DAC.c + DAC.h -> DAC).
+    //  Só os módulos e (futuramente) libs de terceiros vão para o SBOM; os
+    //  arquivos alimentam o grafo. Dados do módulo: creator, versão, licença.
+    // ════════════════════════════════════════════════════════════════════
+
+    // Nomes-base genéricos: um header órfão (.h sem .c) com esses nomes NÃO
+    // vira componente — vai para a fila de não-atribuídos.
+    _genericBases() {
+        return ['types','type','common','config','defines','define','platform',
+                'global','globals','macros','const','constants','typedefine',
+                'settings','conf','version'];
+    },
+    _ext(name) { return name.includes('.') ? name.split('.').pop().toLowerCase() : ''; },
+    _base(name) { return name.includes('.') ? name.slice(0, name.lastIndexOf('.')) : name; },
+    isFileComp(c) { return c.type === 'file' || c.scope === 'first_party'; },
+
+    ensureModule(name) {
+        if (!this.csvModal.modules[name]) {
+            this.csvModal.modules[name] = {
+                version: '', creator: '', license: '', group: '',
+                manual: false, expanded: false,
+            };
+        }
+        return this.csvModal.modules[name];
+    },
+
+    // Infere o módulo de cada arquivo pela regra do par (nome-base), a partir
+    // do que o scan trouxe. Genéricos órfãos vão para `unassigned`.
+    inferModules() {
+        // agrupa arquivos por (base, pasta) para não fundir DAC de módulos diferentes
+        const groups = {};
+        const files = this.csvModal.components.filter(c => this.isFileComp(c));
+        for (const f of files) {
+            const base = this._base(f.name);
+            const folder = (f.folder || '').replace(/\\/g, '/');
+            const dir = folder.includes('/') ? folder.slice(0, folder.lastIndexOf('/')) : '';
+            const key = base.toLowerCase() + '::' + dir;
+            (groups[key] = groups[key] || { base, dir, files: [] }).files.push(f);
+        }
+        this.csvModal.unassigned = [];
+        for (const g of Object.values(groups)) {
+            const exts = new Set(g.files.map(f => this._ext(f.name)));
+            const hasCode = ['c','cc','cpp','cxx'].some(e => exts.has(e));
+            const hasHeader = ['h','hh','hpp','hxx'].some(e => exts.has(e));
+            const genericOrphan = !hasCode && this._genericBases().includes(g.base.toLowerCase());
+            if (hasCode || (hasHeader && !genericOrphan)) {
+                // dados do módulo vêm do .c (impl), fallback no primeiro arquivo
+                const impl = g.files.find(f => ['c','cc','cpp','cxx'].includes(this._ext(f.name))) || g.files[0];
+                const m = this.ensureModule(g.base);
+                if (!m.manual) {
+                    m.version = m.version || impl.version || '';
+                    m.creator = m.creator || impl.author || '';
+                    m.license = m.license || impl.license || '';
+                    m.group   = m.group   || impl.group  || '';
+                }
+                for (const f of g.files) f.module = g.base;
+            } else {
+                for (const f of g.files) { f.module = ''; this.csvModal.unassigned.push(f); }
+            }
+        }
+        this.rebuildGroups();
+    },
+
+    rebuildGroups() {
+        // monta a lista plana: [módulo, arquivos..., módulo, ...] + não-atribuídos
+        const byModule = {};
+        for (const c of this.csvModal.components) {
+            if (!this.isFileComp(c)) continue;
+            if (!c.module) continue;                 // não-atribuído: fora da árvore
+            (byModule[c.module] = byModule[c.module] || []).push(c);
+        }
+        // garante que módulos manuais vazios apareçam mesmo sem arquivos
+        for (const name of Object.keys(this.csvModal.modules)) {
+            if (this.csvModal.modules[name].manual && !byModule[name]) byModule[name] = [];
+        }
+        const rows = [];
+        for (const name of Object.keys(byModule).sort((a,b)=>a.localeCompare(b))) {
+            this.ensureModule(name);
+            rows.push({ kind: 'module', name, files: byModule[name], key: 'm::' + name });
+            for (const f of byModule[name]) {
+                rows.push({ kind: 'file', comp: f, module: name,
+                            key: 'f::' + name + '::' + (f.folder||'') + '::' + f.name });
+            }
+        }
+        this.csvModal.rows = rows;
+    },
+
+    moduleList() {
+        return Object.keys(this.csvModal.modules).sort((a,b)=>a.localeCompare(b));
+    },
+    modulesCount() { return this.moduleList().length; },
+
+    toggleModule(name) { this.ensureModule(name).expanded = !this.csvModal.modules[name].expanded; },
+    expandAllModules(v) { for (const n of this.moduleList()) this.ensureModule(n).expanded = v; },
+
+    // Criar módulo do zero (manual): nasce vazio, o analista move arquivos p/ ele.
+    createModule() {
+        const name = (this.csvModal.newModuleName || '').trim();
+        if (!name) return;
+        if (this.csvModal.modules[name]) {          // já existe: só expande
+            this.ensureModule(name).expanded = true;
+        } else {
+            this.csvModal.modules[name] = {
+                version: '', creator: '', license: '', group: '',
+                manual: true, expanded: true,
+            };
+        }
+        this.csvModal.newModuleName = '';
+        this.rebuildGroups();
+    },
+
+    renameModule(oldName, newName) {
+        newName = (newName || '').trim();
+        if (!newName || newName === oldName) { this.rebuildGroups(); return; }
+        const target = this.ensureModule(newName);
+        const src = this.csvModal.modules[oldName];
+        if (src && !target.version && !target.creator && !target.license) {
+            target.version = src.version; target.creator = src.creator;
+            target.license = src.license; target.group = src.group;
+        }
+        target.expanded = true;
+        for (const c of this.csvModal.components) {
+            if (this.isFileComp(c) && c.module === oldName) c.module = newName;
+        }
+        if (oldName !== newName) delete this.csvModal.modules[oldName];
+        this.rebuildGroups();
+    },
+
+    // Move um arquivo (da árvore ou da fila de não-atribuídos) para um módulo.
+    moveToModule(comp, moduleName) {
+        comp.module = moduleName;
+        const i = this.csvModal.unassigned.indexOf(comp);
+        if (i >= 0) this.csvModal.unassigned.splice(i, 1);
+        this.recomputeDuplicates();
+        this.rebuildGroups();
+    },
+    // Tira um arquivo do módulo e devolve à fila de não-atribuídos.
+    unassignFile(comp) {
+        comp.module = '';
+        if (!this.csvModal.unassigned.includes(comp)) this.csvModal.unassigned.push(comp);
+        this.rebuildGroups();
+    },
+
+    moduleDupCount(files) { return files.filter(f => f.duplicate).length; },
+    moduleIncomplete(name) {
+        const m = this.ensureModule(name);
+        return !m.version || !m.creator || !m.license;
+    },
+    incompleteModulesCount() {
+        return this.moduleList().filter(n => this.moduleIncomplete(n)).length;
+    },
+
+    // ── Preenchimento em lote dos MÓDULOS (creator/licença/versão) ──
+    // Só preenche campos vazios, para não sobrescrever o que veio do cabeçalho.
+    applyModuleBulk() {
+        const b = this.csvModal.moduleBulk;
+        let n = 0;
+        for (const name of this.moduleList()) {
+            const m = this.ensureModule(name);
+            if (b.creator && !m.creator) { m.creator = b.creator; n++; }
+            if (b.license && !m.license) { m.license = b.license; n++; }
+            if (b.version && !m.version) { m.version = b.version; n++; }
+        }
+        this.csvModal.moduleBulkFeedback = n
+            ? ('{% trans "Campos preenchidos" %}: ' + n)
+            : '{% trans "Nada a preencher (campos já tinham valor)" %}';
+        setTimeout(() => { this.csvModal.moduleBulkFeedback = null; }, 3000);
+    },
+
+    // ── Preview CycloneDX (Leitura B): documento com o módulo em foco ──
+    // Aproximação ilustrativa montada no navegador. O arquivo real é gerado
+    // pelo backend no momento da aprovação — este preview pode divergir.
+    _cdxComponentOf(name) {
+        const m = this.ensureModule(name);
+        const files = this.csvModal.components.filter(c => this.isFileComp(c) && c.module === name);
+        const comp = {
+            'type': 'library',
+            'bom-ref': 'component:' + name + '@' + (m.version || 'unknown'),
+            'name': name,
+            'version': m.version || 'unknown',
+        };
+        if (m.group) comp['group'] = m.group;
+        if (m.creator) {
+            // creator: e-mail vira contact.email; URL vira url (BSI §5.2.2)
+            comp['manufacturer'] = m.creator.includes('@')
+                ? { 'contact': [{ 'email': m.creator }] }
+                : { 'url': [m.creator] };
+        }
+        if (m.license) {
+            comp['licenses'] = [{ 'expression': m.license, 'acknowledgement': 'concluded' }];
+        }
+        // arquivos que compõem o módulo, como nota (não são componentes do SBOM)
+        comp['properties'] = files.map(f => ({
+            'name': 'weg:module:file', 'value': f.name,
+        }));
+        return comp;
+    },
+
+    showCdxPreview(name) {
+        const doc = {
+            'bomFormat': 'CycloneDX',
+            'specVersion': '1.6',
+            'version': 1,
+            'metadata': {
+                'timestamp': new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
+                'component': {
+                    'type': 'firmware',
+                    'name': this.csvModal.productName || '(produto)',
+                    'version': this.csvModal.productVersion || 'unknown',
+                },
+            },
+            'components': [this._cdxComponentOf(name)],
+        };
+        this.csvModal.cdxPreview = { module: name, json: JSON.stringify(doc, null, 2) };
+    },
+
+    closeCdxPreview() { this.csvModal.cdxPreview = null; },
 
     componentKey(c) {
         // Arquivos são únicos por caminho (dois "ADC.c" em pastas diferentes
@@ -1088,6 +1319,7 @@
         // recalcula duplicidade sobre o conjunto acumulado inteiro
         this.clearSelection();
         this.recomputeDuplicates();
+        this.inferModules();      // agrupa arquivos em componentes lógicos (par .c/.h)
 
         const canceled = this.csvModal.progress.cancel;
         this.csvModal.scanning = false;
@@ -1106,13 +1338,18 @@
             origin: 'manual', _sel: false,
             name: '', version: '', type: 'library', purl: '', cpe: '',
             supplier: '', license: '', copyright: '', scope: '',
-            author: '', description: '', depends: '', folder: '',
+            author: '', description: '', depends: '', folder: '', module: '',
         });
+        this.rebuildGroups();
     },
 
-    removeCsvRow(index) {
-        this.csvModal.components.splice(index, 1);
+    removeComp(comp) {
+        const i = this.csvModal.components.indexOf(comp);
+        if (i >= 0) this.csvModal.components.splice(i, 1);
+        const u = this.csvModal.unassigned.indexOf(comp);
+        if (u >= 0) this.csvModal.unassigned.splice(u, 1);
         this.recomputeDuplicates();
+        this.rebuildGroups();
     },
 
     // ── Seleção e preenchimento em massa (bulk) ─────────────────────
@@ -1180,6 +1417,11 @@
         const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
         // remove campos internos de revisão (não pertencem ao componente salvo)
         const payload = this.csvModal.components.map(({ duplicate, duplicate_group, _sel, ...rest }) => rest);
+        // componentes lógicos (módulos): é o que vai virar componente no SBOM
+        const modules = Object.entries(this.csvModal.modules).map(([name, m]) => ({
+            name, version: m.version, creator: m.creator, license: m.license,
+            group: m.group, manual: m.manual,
+        }));
         try {
             const res = await fetch('/sbom/api/csv/save/', {
                 method: 'POST',
@@ -1188,6 +1430,7 @@
                     product_name: this.csvModal.productName,
                     product_version: this.csvModal.productVersion,
                     components: payload,
+                    modules: modules,
                 }),
             });
             const data = await res.json();
@@ -4222,6 +4465,58 @@ function closeGraph() {
                 </button>
             </div>
 
+            <!-- Barra dos MÓDULOS (componentes lógicos) -->
+            <div class="px-8 py-3 border-b border-slate-800 bg-slate-900/60 flex items-center gap-3 flex-wrap shrink-0">
+                <span class="text-[10px] font-black uppercase tracking-widest text-purple-300">
+                    <i class="fas fa-cubes mr-1"></i><span x-text="modulesCount()"></span> {% trans "módulos" %}
+                </span>
+                <template x-if="incompleteModulesCount()">
+                    <span class="text-[10px] text-amber-400 font-bold">
+                        <i class="fas fa-triangle-exclamation mr-1"></i>
+                        <span x-text="incompleteModulesCount()"></span> {% trans "sem versão/creator/licença" %}
+                    </span>
+                </template>
+
+                <!-- criar módulo do zero -->
+                <div class="flex items-center gap-1 ml-2">
+                    <input type="text" x-model="csvModal.newModuleName" @keydown.enter="createModule()"
+                           class="w-40 px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
+                           :placeholder="'{% trans "novo módulo" %}'">
+                    <button @click="createModule()" :disabled="!csvModal.newModuleName.trim()"
+                            class="px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-[10px] font-black uppercase transition">
+                        <i class="fas fa-plus mr-1"></i>{% trans "Criar" %}
+                    </button>
+                </div>
+
+                <!-- bulk dos módulos: preenche só vazios -->
+                <div class="flex items-center gap-1.5 flex-wrap ml-2 pl-2 border-l border-slate-700">
+                    <span class="text-[9px] font-black uppercase text-slate-500">{% trans "Lote" %}:</span>
+                    <input type="text" x-model="csvModal.moduleBulk.creator"
+                           class="w-44 px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
+                           :placeholder="'creator (e-mail/URL)'">
+                    <input type="text" x-model="csvModal.moduleBulk.license"
+                           class="w-40 px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
+                           placeholder="SPDX id">
+                    <input type="text" x-model="csvModal.moduleBulk.version"
+                           class="w-24 px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
+                           :placeholder="'{% trans "versão" %}'">
+                    <button @click="applyModuleBulk()"
+                            class="px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-black uppercase transition">
+                        {% trans "Aplicar" %}
+                    </button>
+                    <span x-show="csvModal.moduleBulkFeedback" x-cloak class="text-[10px] text-emerald-400" x-text="csvModal.moduleBulkFeedback"></span>
+                </div>
+
+                <div class="ml-auto flex items-center gap-2">
+                    <button @click="expandAllModules(true)" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] font-black uppercase text-slate-400">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <button @click="expandAllModules(false)" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] font-black uppercase text-slate-400">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+
             <!-- Barra de preenchimento em massa (bulk edit) -->
             <div class="px-8 py-3 border-b border-slate-800 bg-slate-800/20 flex items-center gap-4 flex-wrap shrink-0">
                 <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">
@@ -4321,40 +4616,82 @@ function closeGraph() {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-800/50">
-                        <template x-for="(comp, idx) in csvModal.components" :key="idx">
+                        <template x-for="row in csvModal.rows" :key="row.key">
                             <tr class="hover:bg-slate-800/20"
-                                :class="[comp.duplicate && 'dup-row', comp._sel && 'bg-purple-500/5']">
-                                <td class="px-3 py-2">
-                                    <input type="checkbox" x-model="comp._sel"
+                                x-show="row.kind !== 'file' || (csvModal.modules[row.module] && csvModal.modules[row.module].expanded)"
+                                :class="[
+                                    row.kind==='module' && 'bg-slate-800/60 border-y border-slate-700',
+                                    row.kind==='file' && row.comp.duplicate && 'dup-row',
+                                    row.kind==='file' && row.comp._sel && 'bg-purple-500/5']">
+
+                                <!-- ══ LINHA DO MÓDULO (componente lógico) ══ -->
+                                <td colspan="14" class="px-3 py-2.5" x-show="row.kind==='module'">
+                                    <div class="flex items-center gap-3 flex-wrap">
+                                        <button @click="toggleModule(row.name)" class="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 shrink-0">
+                                            <i class="fas text-[10px]" :class="csvModal.modules[row.name] && csvModal.modules[row.name].expanded ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                                        </button>
+                                        <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded shrink-0"
+                                              :class="csvModal.modules[row.name] && csvModal.modules[row.name].manual ? 'bg-sky-500/20 text-sky-300' : 'bg-purple-500/20 text-purple-300'"
+                                              x-text="csvModal.modules[row.name] && csvModal.modules[row.name].manual ? '{% trans "manual" %}' : '{% trans "módulo" %}'"></span>
+                                        <input type="text" :value="row.name" @change="renameModule(row.name, $event.target.value)"
+                                               class="px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-purple-500/50 min-w-[150px]">
+                                        <span class="text-[10px] font-mono text-slate-500 shrink-0"><i class="fas fa-file-code mr-1"></i><span x-text="row.files.length"></span></span>
+                                        <span x-show="csvModal.modules[row.name] && csvModal.modules[row.name].group" class="text-[9px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-400 shrink-0" x-text="csvModal.modules[row.name] && csvModal.modules[row.name].group"></span>
+                                        <span x-show="moduleDupCount(row.files)" class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 shrink-0"><i class="fas fa-triangle-exclamation"></i> <span x-text="moduleDupCount(row.files)"></span></span>
+                                        <button @click="showCdxPreview(row.name)"
+                                                class="px-2 py-1 rounded-lg bg-slate-700 hover:bg-cyan-500/20 border border-slate-600 hover:border-cyan-500/50 text-[9px] font-black uppercase text-cyan-300 transition shrink-0"
+                                                :title="'{% trans "Pré-visualizar como CycloneDX" %}'">
+                                            <i class="fas fa-eye mr-1"></i>CycloneDX
+                                        </button>
+                                        <div class="flex items-center gap-2 ml-auto flex-wrap">
+                                            <input type="text" x-model="csvModal.modules[row.name].version"
+                                                   class="w-24 px-2 py-1.5 bg-slate-900 border rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
+                                                   :class="csvModal.modules[row.name] && csvModal.modules[row.name].version ? 'border-slate-700' : 'border-amber-500/50 bg-amber-500/5'"
+                                                   :placeholder="'{% trans "versão" %} *'">
+                                            <input type="text" x-model="csvModal.modules[row.name].creator"
+                                                   class="w-48 px-2 py-1.5 bg-slate-900 border rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
+                                                   :class="csvModal.modules[row.name] && csvModal.modules[row.name].creator ? 'border-slate-700' : 'border-amber-500/50 bg-amber-500/5'"
+                                                   :placeholder="'creator: e-mail/URL *'">
+                                            <input type="text" x-model="csvModal.modules[row.name].license"
+                                                   class="w-40 px-2 py-1.5 bg-slate-900 border rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
+                                                   :class="csvModal.modules[row.name] && csvModal.modules[row.name].license ? 'border-slate-700' : 'border-amber-500/50 bg-amber-500/5'"
+                                                   placeholder="SPDX id *">
+                                        </div>
+                                    </div>
+                                </td>
+
+                                <!-- ══ LINHAS DE ARQUIVO ══ -->
+                                <td class="px-3 py-2" x-show="row.kind==='file'">
+                                    <input type="checkbox" x-model="row.comp._sel"
                                            class="accent-purple-500 cursor-pointer">
                                 </td>
-                                <td class="px-3 py-2 whitespace-nowrap">
+                                <td class="px-3 py-2 whitespace-nowrap" x-show="row.kind==='file'">
                                     <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded"
                                           :class="{
-                                              'bg-emerald-500/20 text-emerald-400': comp.origin === 'auto',
-                                              'bg-sky-500/20 text-sky-400': comp.origin === 'csv',
-                                              'bg-slate-600/30 text-slate-400': !comp.origin || comp.origin === 'manual',
+                                              'bg-emerald-500/20 text-emerald-400': row.comp.origin === 'auto',
+                                              'bg-sky-500/20 text-sky-400': row.comp.origin === 'csv',
+                                              'bg-slate-600/30 text-slate-400': !row.comp.origin || row.comp.origin === 'manual',
                                           }"
-                                          x-text="comp.origin === 'auto' ? '{% trans "scan" %}' : comp.origin === 'csv' ? 'csv' : '{% trans "manual" %}'"></span>
-                                    <span x-show="comp.duplicate"
+                                          x-text="row.comp.origin === 'auto' ? '{% trans "scan" %}' : row.comp.origin === 'csv' ? 'csv' : '{% trans "manual" %}'"></span>
+                                    <span x-show="row.comp.duplicate"
                                           class="dup-badge ml-1 text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-red-500/20 text-red-400"
                                           :title="'{% trans "Nome repetido em caminhos diferentes — decida qual manter" %}'">
                                         <i class="fas fa-triangle-exclamation"></i> {% trans "dup" %}
                                     </span>
                                 </td>
-                                <td class="px-3 py-2 min-w-[150px]">
-                                    <input type="text" x-model="comp.name"
+                                <td class="px-3 py-2 min-w-[150px]" x-show="row.kind==='file'">
+                                    <input type="text" x-model="row.comp.name"
                                            class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
                                            placeholder="{% trans "nome" %}">
                                 </td>
-                                <td class="px-3 py-2">
-                                    <input type="text" x-model="comp.version"
+                                <td class="px-3 py-2" x-show="row.kind==='file'">
+                                    <input type="text" x-model="row.comp.version"
                                            class="w-24 px-2 py-1.5 bg-slate-800 border rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
-                                           :class="comp.version ? 'border-slate-700' : 'border-amber-500/50 bg-amber-500/5'"
+                                           :class="row.comp.version ? 'border-slate-700' : 'border-amber-500/50 bg-amber-500/5'"
                                            placeholder="{% trans "pendente" %}">
                                 </td>
-                                <td class="px-3 py-2">
-                                    <select x-model="comp.type"
+                                <td class="px-3 py-2" x-show="row.kind==='file'">
+                                    <select x-model="row.comp.type"
                                             class="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-300 focus:outline-none">
                                         <option value="library">library</option>
                                         <option value="firmware">firmware</option>
@@ -4364,49 +4701,49 @@ function closeGraph() {
                                         <option value="other">other</option>
                                     </select>
                                 </td>
-                                <td class="px-3 py-2 min-w-[120px]">
-                                    <input type="text" x-model="comp.supplier"
+                                <td class="px-3 py-2 min-w-[120px]" x-show="row.kind==='file'">
+                                    <input type="text" x-model="row.comp.supplier"
                                            class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
                                            placeholder="{% trans "fornecedor" %}">
                                 </td>
-                                <td class="px-3 py-2 min-w-[110px]">
-                                    <input type="text" x-model="comp.license"
+                                <td class="px-3 py-2 min-w-[110px]" x-show="row.kind==='file'">
+                                    <input type="text" x-model="row.comp.license"
                                            class="w-full px-2 py-1.5 bg-slate-800 border rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
-                                           :class="comp.license ? 'border-slate-700' : 'border-amber-500/50 bg-amber-500/5'"
+                                           :class="row.comp.license ? 'border-slate-700' : 'border-amber-500/50 bg-amber-500/5'"
                                            placeholder="SPDX id">
                                 </td>
-                                <td class="px-3 py-2 min-w-[190px]">
-                                    <input type="text" x-model="comp.purl"
+                                <td class="px-3 py-2 min-w-[190px]" x-show="row.kind==='file'">
+                                    <input type="text" x-model="row.comp.purl"
                                            class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500/50 font-mono"
                                            placeholder="pkg:generic/nome@versao">
                                 </td>
-                                <td class="px-3 py-2 min-w-[190px]">
-                                    <input type="text" x-model="comp.cpe"
+                                <td class="px-3 py-2 min-w-[190px]" x-show="row.kind==='file'">
+                                    <input type="text" x-model="row.comp.cpe"
                                            class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-amber-500/50 font-mono"
                                            placeholder="cpe:2.3:a:...">
                                 </td>
-                                <td class="px-3 py-2 min-w-[130px]">
-                                    <input type="text" x-model="comp.author"
+                                <td class="px-3 py-2 min-w-[130px]" x-show="row.kind==='file'">
+                                    <input type="text" x-model="row.comp.author"
                                            class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
                                            placeholder="{% trans "autor" %}">
                                 </td>
-                                <td class="px-3 py-2 min-w-[220px]">
-                                    <input type="text" x-model="comp.description" :title="comp.description"
+                                <td class="px-3 py-2 min-w-[220px]" x-show="row.kind==='file'">
+                                    <input type="text" x-model="row.comp.description" :title="row.comp.description"
                                            class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
                                            placeholder="{% trans "descrição" %}">
                                 </td>
-                                <td class="px-3 py-2 min-w-[180px]">
-                                    <input type="text" x-model="comp.depends" :title="comp.depends"
+                                <td class="px-3 py-2 min-w-[180px]" x-show="row.kind==='file'">
+                                    <input type="text" x-model="row.comp.depends" :title="row.comp.depends"
                                            class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
                                            placeholder="{% trans "dependências" %}">
                                 </td>
-                                <td class="px-3 py-2 min-w-[160px]">
-                                    <input type="text" x-model="comp.folder" :title="comp.folder"
+                                <td class="px-3 py-2 min-w-[160px]" x-show="row.kind==='file'">
+                                    <input type="text" x-model="row.comp.folder" :title="row.comp.folder"
                                            class="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-400 focus:outline-none focus:border-purple-500/50 font-mono"
                                            placeholder="{% trans "pasta" %}">
                                 </td>
-                                <td class="px-3 py-2">
-                                    <button @click="removeCsvRow(idx)"
+                                <td class="px-3 py-2" x-show="row.kind==='file'">
+                                    <button @click="removeComp(row.comp)"
                                             class="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-600 hover:text-red-400 transition">
                                         <i class="fas fa-trash text-xs"></i>
                                     </button>
@@ -4420,6 +4757,60 @@ function closeGraph() {
                         </tr>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Fila de NÃO-ATRIBUÍDOS: arquivos que não formaram componente -->
+            <div x-show="csvModal.unassigned.length" x-cloak class="px-8 py-3 border-t border-slate-800 bg-amber-500/5 shrink-0 max-h-48 overflow-auto">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-[10px] font-black uppercase tracking-widest text-amber-400">
+                        <i class="fas fa-inbox mr-1"></i>
+                        <span x-text="csvModal.unassigned.length"></span> {% trans "arquivos não atribuídos" %}
+                    </span>
+                    <span class="text-[10px] text-slate-500">— {% trans "genéricos/órfãos; atribua a um módulo ou deixe fora do SBOM" %}</span>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <template x-for="f in csvModal.unassigned" :key="(f.folder||'')+'::'+f.name">
+                        <div class="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800 border border-slate-700">
+                            <span class="text-xs text-slate-300 font-mono" x-text="f.name"></span>
+                            <span class="text-[9px] text-slate-600" x-text="f.folder" :title="f.folder"></span>
+                            <select @change="if($event.target.value){ moveToModule(f, $event.target.value); }"
+                                    class="px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-[10px] text-slate-300 focus:outline-none">
+                                <option value="">{% trans "→ mover para..." %}</option>
+                                <template x-for="mn in moduleList()" :key="mn">
+                                    <option :value="mn" x-text="mn"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- ═══ PREVIEW CycloneDX (overlay ilustrativo) ═══ -->
+            <div x-show="csvModal.cdxPreview" x-cloak
+                 class="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+                 @click.self="closeCdxPreview()">
+                <div class="relative w-full max-w-2xl bg-slate-950 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col" style="max-height: 85vh">
+                    <div class="px-5 py-3 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-900">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-file-code text-cyan-400"></i>
+                            <span class="text-sm font-black text-white">CycloneDX 1.6</span>
+                            <span class="text-xs text-slate-500">— {% trans "prévia do módulo" %}</span>
+                            <span class="text-xs font-mono text-cyan-300" x-text="csvModal.cdxPreview && csvModal.cdxPreview.module"></span>
+                        </div>
+                        <button @click="closeCdxPreview()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 border border-slate-700">
+                            <i class="fas fa-times text-slate-400 text-xs"></i>
+                        </button>
+                    </div>
+                    <div class="px-2 py-2 overflow-auto">
+                        <pre class="text-[11px] leading-relaxed text-slate-300 font-mono whitespace-pre p-3" x-text="csvModal.cdxPreview && csvModal.cdxPreview.json"></pre>
+                    </div>
+                    <div class="px-5 py-2.5 border-t border-slate-800 shrink-0 bg-slate-900">
+                        <p class="text-[10px] text-slate-500 italic">
+                            <i class="fas fa-circle-info mr-1"></i>
+                            {% trans "Prévia ilustrativa gerada no navegador. O arquivo final é produzido na aprovação e pode diferir." %}
+                        </p>
+                    </div>
+                </div>
             </div>
 
             <!-- Footer actions -->

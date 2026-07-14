@@ -34,7 +34,7 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True   # Session ends when the browser closes
 SESSION_COOKIE_AGE = 3600                # Maximum session lifetime: 1 hour
 
 # Nome da aplicação (centralizado — trocar aqui reflete em todas as telas)
-APP_NAME = "X"
+APP_NAME = "WISM – WEG Integrated SBOM Manager"
 
 # File storage path inside the container
 MEDIA_ROOT = '/data/uploads'
@@ -107,7 +107,6 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'core.context_processors.app_branding',
-                
             ],
         },
     },
