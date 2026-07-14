@@ -34,7 +34,7 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True   # Session ends when the browser closes
 SESSION_COOKIE_AGE = 3600                # Maximum session lifetime: 1 hour
 
 # Nome da aplicação (centralizado — trocar aqui reflete em todas as telas)
-APP_NAME = "WISM – WEG Integrated SBOM Manager"
+APP_NAME = "X"
 
 # File storage path inside the container
 MEDIA_ROOT = '/data/uploads'
